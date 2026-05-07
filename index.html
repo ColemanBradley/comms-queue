@@ -331,10 +331,13 @@
 
   .day-panel-empty { font-size: 13px; color: var(--ink-faint); font-style: italic; text-align: center; padding: 20px 0; }
 
-  /* ── FAB group ── */
-  .fab-group { position: fixed; bottom: 28px; right: 20px; display: flex; flex-direction: column; align-items: flex-end; gap: 10px; z-index: 100; }
-  .fab-paste { height: 36px; padding: 0 16px; border-radius: 18px; background: white; color: var(--ink); border: 1.5px solid #D6D3D1; font-family: 'DM Sans', sans-serif; font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; cursor: pointer; box-shadow: var(--shadow); transition: transform 0.15s, border-color 0.15s; }
-  .fab-paste:hover { transform: scale(1.04); border-color: var(--ink); }
+  /* ── FAB (calendar only) ── */
+  .fab-group { position: fixed; bottom: 28px; right: 20px; z-index: 100; display: none; }
+  .fab-group.visible { display: block; }
+  .fab { width: 56px; height: 56px; border-radius: 50%; background: var(--ink); color: white; border: none; font-size: 26px; cursor: pointer; box-shadow: var(--shadow-lg); display: flex; align-items: center; justify-content: center; transition: transform 0.15s, background 0.15s; }
+  .fab:hover { transform: scale(1.07); }
+  .fab:active { transform: scale(0.94); }
+  html.dark .fab { background: var(--thisweek-accent); }
 
   /* ══════════════════════════════
      MODALS
@@ -486,9 +489,9 @@
   <div class="cal-grid" id="calGrid"></div>
 </div>
 
-<!-- PASTE floating button -->
-<div class="fab-group">
-  <button class="fab-paste" onclick="pasteFromClipboard()">PASTE</button>
+<!-- FAB — calendar view only -->
+<div class="fab-group" id="calFab">
+  <button class="fab" onclick="openModal(null,null,activeDayPanelDate || null)">+</button>
 </div>
 
 <!-- Day detail panel -->
@@ -672,8 +675,6 @@
   }
   function toggleDarkFromMenu() {
     toggleDark();
-    // Brief flash so she sees the toggle animate before sheet closes
-    setTimeout(closeMenu, 300);
   }
   // Init: stored preference → system preference → light
   (function initDark() {
@@ -786,6 +787,7 @@
     document.getElementById('calView').classList.toggle('visible', v === 'cal');
     document.getElementById('btnList').classList.toggle('active', v === 'list');
     document.getElementById('btnCal').classList.toggle('active', v === 'cal');
+    document.getElementById('calFab').classList.toggle('visible', v === 'cal');
     if (v === 'cal') renderCal();
   }
 
@@ -1119,17 +1121,6 @@
   function checkUrlParam() {
     const task = new URLSearchParams(window.location.search).get('task');
     if (task && task.trim()) { window.history.replaceState({}, '', APP_URL); openModal(task.trim(), null); }
-  }
-
-  // ══════════════════════════════
-  // PASTE FAB
-  // ══════════════════════════════
-  async function pasteFromClipboard() {
-    try {
-      const text = await navigator.clipboard.readText();
-      if (text && text.trim()) { openModal(text.trim(), null); showToast('Clipboard pasted into task field'); }
-      else showToast('Clipboard is empty');
-    } catch(e) { openModal(); showToast('Paste your text in the field below'); }
   }
 
   // ══════════════════════════════
