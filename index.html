@@ -97,18 +97,6 @@
   html.dark .cal-day-num { color: var(--ink-light); }
   html.dark .toast { background: var(--ink); color: var(--cream); }
 
-  /* Dark mode toggle button */
-  .dark-btn {
-    background: none; border: 1.5px solid #D6D3D1; border-radius: 20px;
-    height: 28px; padding: 0 10px;
-    font-family: 'DM Sans', sans-serif; font-size: 11px; font-weight: 700;
-    letter-spacing: 0.3px; text-transform: uppercase;
-    cursor: pointer; color: var(--ink-faint);
-    display: flex; align-items: center; gap: 5px;
-    transition: all 0.15s;
-  }
-  .dark-btn:hover { border-color: var(--ink); color: var(--ink); }
-  html.dark .dark-btn { border-color: #6B6460; color: var(--ink-faint); }
   html.dark .dark-btn:hover { border-color: var(--ink); color: var(--ink); }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: 'DM Sans', sans-serif; background: var(--cream); color: var(--ink); min-height: 100dvh; padding-bottom: 120px; }
@@ -120,8 +108,58 @@
   .header-title span { font-style: italic; color: var(--thisweek-accent); }
   .header-right { display: flex; align-items: center; gap: 10px; }
   .task-count { font-size: 12px; font-weight: 500; color: var(--ink-faint); letter-spacing: 0.5px; text-transform: uppercase; }
-  .help-btn { background: none; border: 1.5px solid #D6D3D1; border-radius: 50%; width: 28px; height: 28px; font-size: 13px; cursor: pointer; color: var(--ink-faint); display: flex; align-items: center; justify-content: center; transition: all 0.15s; font-weight: 600; }
-  .help-btn:hover { border-color: var(--ink); color: var(--ink); }
+
+  .menu-btn {
+    background: none; border: none; cursor: pointer;
+    color: var(--ink-faint); padding: 4px;
+    display: flex; align-items: center; justify-content: center;
+    transition: color 0.15s;
+  }
+  .menu-btn:hover { color: var(--ink); }
+
+  /* ── Menu sheet ── */
+  .menu-overlay { position: fixed; inset: 0; background: var(--modal-bg); z-index: 500; display: flex; align-items: flex-end; justify-content: center; opacity: 0; pointer-events: none; transition: opacity 0.2s; }
+  .menu-overlay.open { opacity: 1; pointer-events: all; }
+  .menu-sheet {
+    background: white; border-radius: 20px 20px 0 0;
+    width: 100%; max-width: 680px;
+    padding: 12px 0 40px;
+    transform: translateY(30px);
+    transition: transform 0.25s cubic-bezier(0.34,1.2,0.64,1);
+    box-shadow: 0 -4px 32px rgba(28,25,23,0.15);
+  }
+  html.dark .menu-sheet { background: var(--surface); }
+  .menu-overlay.open .menu-sheet { transform: translateY(0); }
+  .menu-sheet-handle { width: 36px; height: 4px; background: #E7E5E4; border-radius: 2px; margin: 0 auto 16px; }
+  html.dark .menu-sheet-handle { background: #3A3740; }
+
+  .menu-item {
+    display: flex; align-items: center; gap: 14px;
+    padding: 14px 20px; cursor: pointer;
+    transition: background 0.1s;
+  }
+  .menu-item:hover { background: var(--cream); }
+  html.dark .menu-item:hover { background: #2E2B33; }
+  .menu-item-icon { color: var(--ink-light); flex-shrink: 0; display: flex; align-items: center; }
+  .menu-item-label { font-size: 16px; font-weight: 500; color: var(--ink); flex: 1; }
+  .menu-item-arrow { font-size: 18px; color: var(--ink-faint); }
+  .menu-item-toggle {
+    width: 44px; height: 26px; border-radius: 13px;
+    background: #D6D3D1; position: relative;
+    transition: background 0.2s; flex-shrink: 0;
+  }
+  .menu-item-toggle::after {
+    content: ''; position: absolute;
+    width: 22px; height: 22px; border-radius: 50%;
+    background: white; top: 2px; left: 2px;
+    transition: transform 0.2s;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+  }
+  .menu-item-toggle.on { background: var(--ink); }
+  html.dark .menu-item-toggle.on { background: var(--thisweek-accent); }
+  .menu-item-toggle.on::after { transform: translateX(18px); }
+  .menu-divider { height: 1px; background: #F0EDE8; margin: 4px 0; }
+  html.dark .menu-divider { background: #2E2B33; }
 
   /* ── View Toggle ── */
   .view-toggle { display: flex; background: #EDE9E3; border-radius: 10px; padding: 3px; max-width: 680px; margin: 0 auto; }
@@ -375,8 +413,11 @@
     <h1 class="header-title">Comms <span>Queue</span></h1>
     <div class="header-right">
       <div class="task-count" id="totalCount">0 tasks</div>
-      <button class="dark-btn" id="darkBtn" onclick="toggleDark()">Light</button>
-      <button class="help-btn" onclick="openHelp()">?</button>
+      <button class="menu-btn" onclick="openMenu()">
+        <svg width="20" height="14" viewBox="0 0 20 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M1 1H19M1 7H19M1 13H19" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+      </button>
     </div>
   </div>
   <div class="view-toggle">
@@ -511,59 +552,101 @@
   </div>
 </div>
 
-<!-- Help panel -->
-<div class="help-overlay" id="helpOverlay" onclick="handleHelpOverlayClick(event)">
+<!-- ══ MENU SHEET ══ -->
+<div class="menu-overlay" id="menuOverlay" onclick="handleMenuOverlayClick(event)">
+  <div class="menu-sheet">
+    <div class="menu-sheet-handle"></div>
+    <div class="menu-item" onclick="closeMenu(); setTimeout(openSetup, 200);">
+      <div class="menu-item-icon">
+        <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><circle cx="9" cy="9" r="7.5" stroke="currentColor" stroke-width="1.5"/><path d="M9 5.5V9.5L11.5 12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+      </div>
+      <div class="menu-item-label">Setup</div>
+      <div class="menu-item-arrow">›</div>
+    </div>
+    <div class="menu-item" onclick="closeMenu(); setTimeout(openTips, 200);">
+      <div class="menu-item-icon">
+        <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M9 2C5.13 2 2 5.13 2 9s3.13 7 7 7 7-3.13 7-7-3.13-7-7-7zm.75 10.5h-1.5v-5h1.5v5zm0-6.5h-1.5V4.5h1.5V6z" fill="currentColor"/></svg>
+      </div>
+      <div class="menu-item-label">Tips</div>
+      <div class="menu-item-arrow">›</div>
+    </div>
+    <div class="menu-divider"></div>
+    <div class="menu-item" onclick="toggleDarkFromMenu()">
+      <div class="menu-item-icon">
+        <svg id="menuModeIcon" width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M9 1v2M9 15v2M1 9h2M15 9h2M3.22 3.22l1.42 1.42M13.36 13.36l1.42 1.42M3.22 14.78l1.42-1.42M13.36 4.64l1.42-1.42M9 5.5a3.5 3.5 0 100 7 3.5 3.5 0 000-7z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+      </div>
+      <div class="menu-item-label" id="menuModeLabel">Dark Mode</div>
+      <div class="menu-item-toggle" id="menuModeToggle"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ SETUP PANEL ══ -->
+<div class="help-overlay" id="setupOverlay" onclick="handleSetupOverlayClick(event)">
   <div class="help-panel">
-    <button class="help-close" onclick="closeHelp()">×</button>
-    <h2>Setup &amp; Tips</h2>
-    <p class="help-sub">Everything you need to get Comms Queue on your home screen and working smoothly.</p>
+    <button class="help-close" onclick="closeSetup()">×</button>
+    <h2>Setup</h2>
+    <p class="help-sub">Get Comms Queue on your home screen and set up quick capture.</p>
 
     <div class="help-section">
       <h3>Add to Home Screen</h3>
       <div class="help-step"><div class="step-num">1</div><div class="step-text">Open this app in <strong>Safari</strong> — it must be Safari, not Chrome or another browser.</div></div>
-      <div class="help-step"><div class="step-num">2</div><div class="step-text">Tap the <strong>Share</strong> button at the bottom of the screen — it looks like a box with an arrow pointing up.</div></div>
+      <div class="help-step"><div class="step-num">2</div><div class="step-text">Tap the <strong>Share</strong> button at the bottom of the screen — the box with an arrow pointing up.</div></div>
       <div class="help-step"><div class="step-num">3</div><div class="step-text">Scroll down in the share sheet and tap <strong>Add to Home Screen</strong>.</div></div>
       <div class="help-step"><div class="step-num">4</div><div class="step-text">Tap <strong>Add</strong> in the top right. The Comms Queue icon will appear on your home screen and open full screen like a native app.</div></div>
     </div>
 
     <div class="help-section">
       <h3>Quick Capture — iOS Shortcut</h3>
-      <p style="font-size:13px;color:var(--ink-faint);margin-bottom:12px;line-height:1.5;">Set this up once and you can send any copied text straight into Comms Queue in two taps from anywhere — Slack, Mail, Messages.</p>
+      <p style="font-size:13px;color:var(--ink-faint);margin-bottom:12px;line-height:1.5;">Set this up once and you can send any copied text straight into Comms Queue in two taps from Slack, Mail, or Messages.</p>
       <div class="help-step"><div class="step-num">1</div><div class="step-text">Open the <strong>Shortcuts</strong> app and tap <strong>+</strong> to create a new shortcut.</div></div>
       <div class="help-step"><div class="step-num">2</div><div class="step-text">Tap <strong>Add Action</strong>, search for <strong>"Get Clipboard"</strong>, and add it.</div></div>
-      <div class="help-step"><div class="step-num">3</div><div class="step-text">Add a second action: search <strong>"Open URL"</strong>. In the URL field enter:<br><br><code id="shortcutUrl"></code><br><br>Tap the variable token at the end of the URL field and choose <strong>Clipboard</strong>.</div></div>
+      <div class="help-step"><div class="step-num">3</div><div class="step-text">Add a second action: search <strong>"Open URL"</strong>. In the URL field enter:<br><br><code id="shortcutUrl"></code><br><br>Tap the variable token at the end and choose <strong>Clipboard</strong>.</div></div>
       <div class="help-step"><div class="step-num">4</div><div class="step-text">Tap the shortcut name at the top, rename it <strong>"Send to Queue"</strong>, and tap <strong>Done</strong>.</div></div>
-      <div class="help-step"><div class="step-num">5</div><div class="step-text"><strong>To use:</strong> Select and copy any text in Slack or Mail → tap the Share button → find <span class="shortcut-chip">Send to Queue</span> → tap it. Comms Queue opens with the text already in the task field.</div></div>
+      <div class="help-step"><div class="step-num">5</div><div class="step-text"><strong>To use:</strong> Copy any text → tap Share → find <span class="shortcut-chip">Send to Queue</span> → tap it. The app opens with the text ready to triage.</div></div>
     </div>
 
     <div class="help-section">
       <h3>Google Calendar</h3>
-      <div class="help-step">
-        <div class="step-num">1</div>
-        <div class="step-text"><strong>Add one task:</strong> Any task with a due date has a <strong>GCal</strong> button. Tap it and Google Calendar opens with the event pre-filled — just hit Save.</div>
-      </div>
-      <div class="help-step">
-        <div class="step-num">2</div>
-        <div class="step-text"><strong>Subscribe to all tasks:</strong> Use the feed URL below to subscribe in Google Calendar once. All due-dated tasks will appear on your calendar automatically and stay in sync.</div>
-      </div>
+      <div class="help-step"><div class="step-num">1</div><div class="step-text"><strong>Add one task:</strong> Any task with a due date has a <strong>GCal</strong> button. Tap it and Google Calendar opens with the event pre-filled — just hit Save.</div></div>
+      <div class="help-step"><div class="step-num">2</div><div class="step-text"><strong>Subscribe to all tasks:</strong> Use the feed URL below to subscribe in Google Calendar once. All due-dated tasks appear on your calendar automatically.</div></div>
       <div class="ics-box" id="icsBox">
         <div class="ics-note">Loading…</div>
       </div>
     </div>
+  </div>
+</div>
+
+<!-- ══ TIPS PANEL ══ -->
+<div class="help-overlay" id="tipsOverlay" onclick="handleTipsOverlayClick(event)">
+  <div class="help-panel">
+    <button class="help-close" onclick="closeTips()">×</button>
+    <h2>Tips</h2>
+    <p class="help-sub">Get the most out of Comms Queue.</p>
 
     <div class="help-section">
-      <h3>Using the Calendar View</h3>
-      <div class="help-step"><div class="step-num">→</div><div class="step-text">Tasks without a due date appear as <strong>draggable chips</strong> at the top. Press and drag a chip onto any day to set its due date — the bucket auto-updates based on when the date falls.</div></div>
+      <h3>Adding Tasks</h3>
+      <div class="help-step"><div class="step-num">→</div><div class="step-text">Tap the <strong>label area</strong> of any bucket to add a new task directly into that bucket. The bucket will be pre-selected but you can change it.</div></div>
+      <div class="help-step"><div class="step-num">→</div><div class="step-text">The <strong>PASTE</strong> button reads your clipboard and drops it straight into the task field — great after copying a Slack message.</div></div>
+    </div>
+
+    <div class="help-section">
+      <h3>Editing Tasks</h3>
+      <div class="help-step"><div class="step-num">→</div><div class="step-text">Tap the <strong>text of any task</strong> in the list to edit it — change the text, due date, bucket, notes, or source.</div></div>
+      <div class="help-step"><div class="step-num">→</div><div class="step-text">Tap the <strong>☰ button</strong> on any task to move it to a different bucket or delete it.</div></div>
+    </div>
+
+    <div class="help-section">
+      <h3>Calendar View</h3>
+      <div class="help-step"><div class="step-num">→</div><div class="step-text">Tasks without a due date appear as <strong>draggable chips</strong> at the top. Press and drag onto any day to set the due date — the bucket updates automatically.</div></div>
       <div class="help-step"><div class="step-num">→</div><div class="step-text">Tap a chip to set a date or move it to a bucket without dragging.</div></div>
       <div class="help-step"><div class="step-num">→</div><div class="step-text">Tap any day on the calendar to see everything due that day. From there you can complete, edit, or move any task.</div></div>
     </div>
 
     <div class="help-section">
-      <h3>Tips</h3>
-      <div class="help-step"><div class="step-num">→</div><div class="step-text">Tap the <strong>label area</strong> of any bucket to add a new task directly into that bucket.</div></div>
-      <div class="help-step"><div class="step-num">→</div><div class="step-text">Tap the <strong>text of any task</strong> in the list to edit it.</div></div>
-      <div class="help-step"><div class="step-num">→</div><div class="step-text">The <strong>PASTE</strong> button reads your clipboard and drops it straight into the task field — useful after copying a Slack message.</div></div>
-      <div class="help-step"><div class="step-num">→</div><div class="step-text">The app works <strong>offline</strong>. Any changes you make will be there when you reconnect.</div></div>
+      <h3>General</h3>
+      <div class="help-step"><div class="step-num">→</div><div class="step-text">The app works <strong>offline</strong>. Any changes you make will be saved and waiting when you reconnect.</div></div>
+      <div class="help-step"><div class="step-num">→</div><div class="step-text">When an update is available, a banner will appear at the top. Tap <strong>Update Now</strong> to get the latest version.</div></div>
     </div>
   </div>
 </div>
@@ -577,12 +660,20 @@
   // ══════════════════════════════
   function applyDark(dark) {
     document.documentElement.classList.toggle('dark', dark);
-    document.getElementById('darkBtn').textContent = dark ? 'Light' : 'Dark';
+    const toggle = document.getElementById('menuModeToggle');
+    const label  = document.getElementById('menuModeLabel');
+    if (toggle) toggle.classList.toggle('on', dark);
+    if (label)  label.textContent = dark ? 'Light Mode' : 'Dark Mode';
   }
   function toggleDark() {
     const nowDark = !document.documentElement.classList.contains('dark');
     localStorage.setItem('commsDark', nowDark ? '1' : '0');
     applyDark(nowDark);
+  }
+  function toggleDarkFromMenu() {
+    toggleDark();
+    // Brief flash so she sees the toggle animate before sheet closes
+    setTimeout(closeMenu, 300);
   }
   // Init: stored preference → system preference → light
   (function initDark() {
@@ -1342,14 +1433,19 @@
   }
 
   // ══════════════════════════════
-  // HELP
+  // MENU + PANELS
   // ══════════════════════════════
-  function openHelp()  {
-    renderIcsBox();
-    document.getElementById('helpOverlay').classList.add('open');
-  }
-  function closeHelp() { document.getElementById('helpOverlay').classList.remove('open'); }
-  function handleHelpOverlayClick(e) { if (e.target === document.getElementById('helpOverlay')) closeHelp(); }
+  function openMenu()  { document.getElementById('menuOverlay').classList.add('open'); }
+  function closeMenu() { document.getElementById('menuOverlay').classList.remove('open'); }
+  function handleMenuOverlayClick(e) { if (e.target === document.getElementById('menuOverlay')) closeMenu(); }
+
+  function openSetup()  { renderIcsBox(); document.getElementById('setupOverlay').classList.add('open'); }
+  function closeSetup() { document.getElementById('setupOverlay').classList.remove('open'); }
+  function handleSetupOverlayClick(e) { if (e.target === document.getElementById('setupOverlay')) closeSetup(); }
+
+  function openTips()  { document.getElementById('tipsOverlay').classList.add('open'); }
+  function closeTips() { document.getElementById('tipsOverlay').classList.remove('open'); }
+  function handleTipsOverlayClick(e) { if (e.target === document.getElementById('tipsOverlay')) closeTips(); }
 
   function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
