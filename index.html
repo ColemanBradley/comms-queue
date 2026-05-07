@@ -30,7 +30,86 @@
     --radius: 14px;
     --shadow: 0 2px 12px rgba(28,25,23,0.08);
     --shadow-lg: 0 8px 32px rgba(28,25,23,0.16);
+    /* surface tokens used throughout */
+    --surface: white;
+    --surface-2: var(--cream);
+    --border: #E7E5E4;
   }
+
+  /* ── Dark mode ── */
+  html.dark {
+    --cream: #18171A;
+    --ink: #F5F0EB;
+    --ink-light: #B8B0A8;
+    --ink-faint: #6B6460;
+    --thisweek-bg: #2A1A1A;
+    --thisweek-border: #5C2222;
+    --thisweek-accent: #F87171;
+    --thisweek-tag: #3B1F1F;
+    --nextweek-bg: #241E10;
+    --nextweek-border: #6B4A10;
+    --nextweek-accent: #FBBF24;
+    --nextweek-tag: #332510;
+    --parking-bg: #102418;
+    --parking-border: #1A5C32;
+    --parking-accent: #4ADE80;
+    --parking-tag: #112B1B;
+    --overdue-accent: #FB7185;
+    --modal-bg: rgba(0,0,0,0.75);
+    --shadow: 0 2px 12px rgba(0,0,0,0.3);
+    --shadow-lg: 0 8px 32px rgba(0,0,0,0.5);
+    --surface: #232128;
+    --surface-2: #18171A;
+    --border: #38353D;
+  }
+
+  /* Surface overrides — anywhere white is hardcoded */
+  html.dark body { background: var(--cream); }
+  html.dark header { background: var(--cream); border-bottom-color: rgba(255,255,255,0.06); }
+  html.dark .task-card,
+  html.dark .modal,
+  html.dark .move-modal,
+  html.dark .day-panel,
+  html.dark .help-panel { background: var(--surface); }
+  html.dark .field input,
+  html.dark .field textarea { background: var(--surface); border-color: var(--border); color: var(--ink); }
+  html.dark .field input::placeholder,
+  html.dark .field textarea::placeholder { color: var(--ink-faint); }
+  html.dark .tag { background: #2E2B33; color: var(--ink-light); }
+  html.dark .due-tag { background: #2E2B33; color: var(--ink-light); }
+  html.dark .due-tag.overdue { background: #3B1220; color: var(--overdue-accent); }
+  html.dark .due-tag.soon { background: #332510; color: #FBBF24; }
+  html.dark .view-toggle { background: #2E2B33; }
+  html.dark .view-btn.active { background: var(--surface); color: var(--ink); }
+  html.dark .cal-day { background: var(--surface); }
+  html.dark .cal-day.other-month { background: transparent; }
+  html.dark .detail-task { background: #2E2B33; }
+  html.dark .btn-cancel { background: var(--surface); border-color: var(--border); color: var(--ink-light); }
+  html.dark .pill { border-color: var(--border); background: var(--surface); }
+  html.dark .help-section h3 { border-bottom-color: #2E2B33; }
+  html.dark .bookmarklet-box,
+  html.dark .ics-box { background: #2E2B33; }
+  html.dark .ics-url-display { background: var(--surface); border-color: var(--border); color: var(--ink-light); }
+  html.dark .fab-paste { background: var(--surface); border-color: var(--border); color: var(--ink); }
+  html.dark .move-option:hover { background: #2E2B33; }
+  html.dark .unscheduled-tray .unscheduled-empty { color: var(--ink-faint); }
+  html.dark .cal-day.drag-over { background: #2E2B33; }
+  html.dark .cal-day-num { color: var(--ink-light); }
+  html.dark .toast { background: var(--ink); color: var(--cream); }
+
+  /* Dark mode toggle button */
+  .dark-btn {
+    background: none; border: 1.5px solid #D6D3D1; border-radius: 20px;
+    height: 28px; padding: 0 10px;
+    font-family: 'DM Sans', sans-serif; font-size: 11px; font-weight: 700;
+    letter-spacing: 0.3px; text-transform: uppercase;
+    cursor: pointer; color: var(--ink-faint);
+    display: flex; align-items: center; gap: 5px;
+    transition: all 0.15s;
+  }
+  .dark-btn:hover { border-color: var(--ink); color: var(--ink); }
+  html.dark .dark-btn { border-color: #6B6460; color: var(--ink-faint); }
+  html.dark .dark-btn:hover { border-color: var(--ink); color: var(--ink); }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: 'DM Sans', sans-serif; background: var(--cream); color: var(--ink); min-height: 100dvh; padding-bottom: 120px; }
 
@@ -296,6 +375,7 @@
     <h1 class="header-title">Comms <span>Queue</span></h1>
     <div class="header-right">
       <div class="task-count" id="totalCount">0 tasks</div>
+      <button class="dark-btn" id="darkBtn" onclick="toggleDark()">Light</button>
       <button class="help-btn" onclick="openHelp()">?</button>
     </div>
   </div>
@@ -435,36 +515,36 @@
 <div class="help-overlay" id="helpOverlay" onclick="handleHelpOverlayClick(event)">
   <div class="help-panel">
     <button class="help-close" onclick="closeHelp()">×</button>
-    <h2>Quick Capture Setup</h2>
-    <p class="help-sub">Send text straight to Comms Queue in 2 taps — from Slack, Mail, anywhere.</p>
+    <h2>Setup &amp; Tips</h2>
+    <p class="help-sub">Everything you need to get Comms Queue on your home screen and working smoothly.</p>
+
     <div class="help-section">
-      <h3>iPhone — iOS Shortcut</h3>
+      <h3>Add to Home Screen</h3>
+      <div class="help-step"><div class="step-num">1</div><div class="step-text">Open this app in <strong>Safari</strong> — it must be Safari, not Chrome or another browser.</div></div>
+      <div class="help-step"><div class="step-num">2</div><div class="step-text">Tap the <strong>Share</strong> button at the bottom of the screen — it looks like a box with an arrow pointing up.</div></div>
+      <div class="help-step"><div class="step-num">3</div><div class="step-text">Scroll down in the share sheet and tap <strong>Add to Home Screen</strong>.</div></div>
+      <div class="help-step"><div class="step-num">4</div><div class="step-text">Tap <strong>Add</strong> in the top right. The Comms Queue icon will appear on your home screen and open full screen like a native app.</div></div>
+    </div>
+
+    <div class="help-section">
+      <h3>Quick Capture — iOS Shortcut</h3>
+      <p style="font-size:13px;color:var(--ink-faint);margin-bottom:12px;line-height:1.5;">Set this up once and you can send any copied text straight into Comms Queue in two taps from anywhere — Slack, Mail, Messages.</p>
       <div class="help-step"><div class="step-num">1</div><div class="step-text">Open the <strong>Shortcuts</strong> app and tap <strong>+</strong> to create a new shortcut.</div></div>
       <div class="help-step"><div class="step-num">2</div><div class="step-text">Tap <strong>Add Action</strong>, search for <strong>"Get Clipboard"</strong>, and add it.</div></div>
-      <div class="help-step"><div class="step-num">3</div><div class="step-text">Add a second action: search <strong>"Open URL"</strong>. Enter this URL:<br><br><code id="shortcutUrl"></code><br><br>Then tap the variable token at the end and choose <strong>Clipboard</strong>.</div></div>
-      <div class="help-step"><div class="step-num">4</div><div class="step-text">Rename the shortcut <strong>"Send to Queue"</strong> and tap <strong>Done</strong>.</div></div>
-      <div class="help-step"><div class="step-num">5</div><div class="step-text"><strong>To use:</strong> Copy any text in Slack or Mail, tap Share, find <span class="shortcut-chip">Send to Queue</span>, and tap it.</div></div>
+      <div class="help-step"><div class="step-num">3</div><div class="step-text">Add a second action: search <strong>"Open URL"</strong>. In the URL field enter:<br><br><code id="shortcutUrl"></code><br><br>Tap the variable token at the end of the URL field and choose <strong>Clipboard</strong>.</div></div>
+      <div class="help-step"><div class="step-num">4</div><div class="step-text">Tap the shortcut name at the top, rename it <strong>"Send to Queue"</strong>, and tap <strong>Done</strong>.</div></div>
+      <div class="help-step"><div class="step-num">5</div><div class="step-text"><strong>To use:</strong> Select and copy any text in Slack or Mail → tap the Share button → find <span class="shortcut-chip">Send to Queue</span> → tap it. Comms Queue opens with the text already in the task field.</div></div>
     </div>
+
     <div class="help-section">
-      <h3>Desktop — Bookmarklet</h3>
-      <div class="help-step"><div class="step-num">1</div><div class="step-text">Show your bookmarks bar with <strong>Cmd+Shift+B</strong> in Chrome or Safari.</div></div>
-      <div class="help-step"><div class="step-num">2</div><div class="step-text">Drag the button below directly into your bookmarks bar.</div></div>
-      <div class="bookmarklet-box">
-        <div class="bookmarklet-label">Drag to bookmarks bar</div>
-        <a class="bookmarklet-link" id="bookmarkletLink" href="#">Send to Queue</a>
-        <div class="bookmarklet-instructions">Copy any text in Slack or Gmail, then click the bookmark. Comms Queue opens with the text pre-filled and ready to triage.</div>
-      </div>
-      <div class="help-step" style="margin-top:14px"><div class="step-num">3</div><div class="step-text"><strong>Chrome:</strong> Click <strong>Allow</strong> if prompted about clipboard access.</div></div>
-    </div>
-    <div class="help-section">
-      <h3>Google Calendar Integration</h3>
+      <h3>Google Calendar</h3>
       <div class="help-step">
         <div class="step-num">1</div>
-        <div class="step-text"><strong>One-tap add (per task):</strong> Any task with a due date shows a small <strong>GCal</strong> button in the list view, and an <strong>Add to Google Calendar</strong> button in the day detail panel. Tap it and Google Calendar opens with the event pre-filled — title, date, bucket, ministry tag, and source. Just hit Save.</div>
+        <div class="step-text"><strong>Add one task:</strong> Any task with a due date has a <strong>GCal</strong> button. Tap it and Google Calendar opens with the event pre-filled — just hit Save.</div>
       </div>
       <div class="help-step">
         <div class="step-num">2</div>
-        <div class="step-text"><strong>Subscribe (auto-sync):</strong> Subscribe to the live feed URL below in Google Calendar once and all due-dated tasks appear automatically — no tapping required per task.</div>
+        <div class="step-text"><strong>Subscribe to all tasks:</strong> Use the feed URL below to subscribe in Google Calendar once. All due-dated tasks will appear on your calendar automatically and stay in sync.</div>
       </div>
       <div class="ics-box" id="icsBox">
         <div class="ics-note">Loading…</div>
@@ -472,9 +552,18 @@
     </div>
 
     <div class="help-section">
-      <h3>Calendar View Tips</h3>
-      <div class="help-step"><div class="step-num">→</div><div class="step-text">Tasks without a due date appear as <strong>chips at the top</strong> of the calendar. Drag any chip onto a day to set its due date — it auto-assigns to This Week or Next Week based on the date.</div></div>
-      <div class="help-step"><div class="step-num">→</div><div class="step-text">Tap any day with tasks to see the full detail panel for that day.</div></div>
+      <h3>Using the Calendar View</h3>
+      <div class="help-step"><div class="step-num">→</div><div class="step-text">Tasks without a due date appear as <strong>draggable chips</strong> at the top. Press and drag a chip onto any day to set its due date — the bucket auto-updates based on when the date falls.</div></div>
+      <div class="help-step"><div class="step-num">→</div><div class="step-text">Tap a chip to set a date or move it to a bucket without dragging.</div></div>
+      <div class="help-step"><div class="step-num">→</div><div class="step-text">Tap any day on the calendar to see everything due that day. From there you can complete, edit, or move any task.</div></div>
+    </div>
+
+    <div class="help-section">
+      <h3>Tips</h3>
+      <div class="help-step"><div class="step-num">→</div><div class="step-text">Tap the <strong>label area</strong> of any bucket to add a new task directly into that bucket.</div></div>
+      <div class="help-step"><div class="step-num">→</div><div class="step-text">Tap the <strong>text of any task</strong> in the list to edit it.</div></div>
+      <div class="help-step"><div class="step-num">→</div><div class="step-text">The <strong>PASTE</strong> button reads your clipboard and drops it straight into the task field — useful after copying a Slack message.</div></div>
+      <div class="help-step"><div class="step-num">→</div><div class="step-text">The app works <strong>offline</strong>. Any changes you make will be there when you reconnect.</div></div>
     </div>
   </div>
 </div>
@@ -482,8 +571,31 @@
 <script>
   const APP_URL = window.location.href.split('?')[0];
   document.getElementById('shortcutUrl').textContent = APP_URL + '?task=';
-  const bm = `javascript:(function(){var t=encodeURIComponent(window.getSelection().toString()||'');if(!t){navigator.clipboard.readText().then(function(c){window.open('${APP_URL}?task='+encodeURIComponent(c),'_self')}).catch(function(){window.open('${APP_URL}','_self')})}else{window.open('${APP_URL}?task='+t,'_self')}})();`;
-  document.getElementById('bookmarkletLink').href = bm;
+
+  // ══════════════════════════════
+  // DARK MODE
+  // ══════════════════════════════
+  function applyDark(dark) {
+    document.documentElement.classList.toggle('dark', dark);
+    document.getElementById('darkBtn').textContent = dark ? 'Light' : 'Dark';
+  }
+  function toggleDark() {
+    const nowDark = !document.documentElement.classList.contains('dark');
+    localStorage.setItem('commsDark', nowDark ? '1' : '0');
+    applyDark(nowDark);
+  }
+  // Init: stored preference → system preference → light
+  (function initDark() {
+    const stored = localStorage.getItem('commsDark');
+    if (stored !== null) {
+      applyDark(stored === '1');
+    } else {
+      applyDark(window.matchMedia('(prefers-color-scheme: dark)').matches);
+    }
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', e => {
+      if (localStorage.getItem('commsDark') === null) applyDark(e.matches);
+    });
+  })();
 
   // ── Schema versioning & migration ──
   const SCHEMA_VERSION = 2;
@@ -628,7 +740,7 @@
       </div>
       <div class="task-actions">
         ${t.dueDate ? `<button class="task-btn task-btn-gcal" onclick="openGcal('${t.id}')" title="Add to Google Calendar">GCal</button>` : ''}
-        <button class="task-btn" onclick="openMoveModal('${t.id}')">↕</button>
+        <button class="task-btn" onclick="openMoveModal('${t.id}')" title="Move / delete" style="opacity:0.4;font-size:15px;letter-spacing:-1px;padding:4px 5px;">&#9776;</button>
       </div>
     </div>`;
   }
@@ -888,7 +1000,7 @@
         <div class="detail-actions">
           <button class="detail-btn" onclick="toggleDoneFromPanel('${t.id}')" title="${t.done ? 'Undo' : 'Complete'}">${t.done ? '↩' : '✓'}</button>
           <button class="detail-btn" onclick="closeDayPanel();editTask('${t.id}')" title="Edit">✎</button>
-          <button class="detail-btn" onclick="openMoveModal('${t.id}')" title="Move">↕</button>
+          <button class="detail-btn" onclick="openMoveModal('${t.id}')" title="Move" style="font-size:15px;letter-spacing:-1px;">&#9776;</button>
         </div>
       </div>`).join('');
   }
