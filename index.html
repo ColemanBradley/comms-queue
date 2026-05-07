@@ -6,9 +6,6 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Comms Queue</title>
-<meta name="theme-color" content="#F7F3EE">
-<link rel="manifest" href="/manifest.json">
-<link rel="apple-touch-icon" href="/icon-192.png">
 <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -302,33 +299,9 @@
     .day-panel { border-radius: 20px; max-height: 70dvh; }
     .cal-day { min-height: 74px; }
   }
-  /* ── Update banner ── */
-  .update-banner {
-    position: fixed; top: 0; left: 0; right: 0; z-index: 1000;
-    background: var(--ink); color: white;
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 12px 20px; gap: 12px;
-    transform: translateY(-100%);
-    transition: transform 0.3s cubic-bezier(0.34,1.2,0.64,1);
-    box-shadow: var(--shadow-lg);
-  }
-  .update-banner.show { transform: translateY(0); }
-  .update-banner-text { font-size: 13px; font-weight: 500; }
-  .update-banner-btn {
-    background: white; color: var(--ink); border: none;
-    padding: 6px 14px; border-radius: 20px;
-    font-family: 'DM Sans', sans-serif; font-size: 12px; font-weight: 700;
-    letter-spacing: 0.5px; cursor: pointer; white-space: nowrap; flex-shrink: 0;
-  }
-
 </style>
 </head>
 <body>
-
-<div class="update-banner" id="updateBanner">
-  <span class="update-banner-text">A new version is ready.</span>
-  <button class="update-banner-btn" onclick="applyUpdate()">Update Now</button>
-</div>
 
 <div class="toast" id="toast"></div>
 
@@ -435,6 +408,7 @@
       </div>
     </div>
     <div class="field"><label>Ministry / Tag <span style="font-weight:400;text-transform:none;letter-spacing:0">(optional)</span></label><input type="text" id="taskTag" placeholder="e.g. Youth, Worship, Kids…"></div>
+    <div class="field"><label>Notes <span style="font-weight:400;text-transform:none;letter-spacing:0">(optional)</span></label><textarea id="taskNotes" placeholder="Any extra context, links, or details…" rows="2"></textarea></div>
     <div class="modal-actions">
       <button class="btn-cancel" onclick="closeModal()">Cancel</button>
       <button class="btn-add" id="addBtn" onclick="addTask()" disabled>Add Task</button>
@@ -450,6 +424,13 @@
     <div class="move-option" onclick="moveTask('nextweek')"><div class="move-option-dot" style="background:var(--nextweek-accent)"></div><div class="move-option-label">Next Week</div></div>
     <div class="move-option" onclick="moveTask('parking')"><div class="move-option-dot"  style="background:var(--parking-accent)"></div><div class="move-option-label">Parking Lot</div></div>
     <div class="move-option" onclick="deleteTask()"><div class="move-option-dot" style="background:#DC2626"></div><div class="move-option-label" style="color:#DC2626">Delete</div></div>
+    <div id="moveModalDateRow" style="display:none;padding:10px 12px 2px;border-top:1px solid #F0EDE8;margin-top:6px;">
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--ink-faint);margin-bottom:6px;">Set a due date</div>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <input type="date" id="moveModalDate" style="flex:1;padding:8px 10px;border:1.5px solid #E7E5E4;border-radius:8px;font-family:'DM Sans',sans-serif;font-size:13px;color:var(--ink);outline:none;-webkit-appearance:none;">
+        <button onclick="applyMoveDate()" style="background:var(--ink);color:white;border:none;border-radius:8px;padding:8px 14px;font-family:'DM Sans',sans-serif;font-size:12px;font-weight:700;cursor:pointer;">Set</button>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -646,6 +627,7 @@
           ${t.source ? `<span class="tag">${escHtml(t.source)}</span>` : ''}
           ${t.tag    ? `<span class="tag">${escHtml(t.tag)}</span>`    : ''}
         </div>
+        ${t.notes ? `<div style="font-size:12px;color:var(--ink-faint);margin-top:4px;line-height:1.4;">${escHtml(t.notes.length > 60 ? t.notes.slice(0,60)+'…' : t.notes)}</div>` : ''}
       </div>
       <div class="task-actions">
         ${t.dueDate ? `<button class="task-btn task-btn-gcal" onclick="openGcal('${t.id}')" title="Add to Google Calendar">GCal</button>` : ''}
@@ -720,7 +702,7 @@
       const chipsHtml = dayTasks.slice(0, MAX_CHIPS).map(t => {
         const cls = t.done ? 'done' : t.bucket;
         const label = escHtml(t.text.length > 18 ? t.text.slice(0, 18) + '…' : t.text);
-        return `<div class="cal-chip cal-chip-${cls}" onclick="editTask('${t.id}');event.stopPropagation();">${label}</div>`;
+        return `<div class="cal-chip cal-chip-${cls}">${label}</div>`;
       }).join('');
       const overflow = dayTasks.length > MAX_CHIPS ? `<div class="cal-overflow">+${dayTasks.length - MAX_CHIPS} more</div>` : '';
 
@@ -784,50 +766,64 @@
     dragTaskId = null;
   }
 
-  // ── Touch drag support for iPhone ──
-  let touchChipEl = null, touchTaskId = null, touchGhost = null;
+  // ── Touch drag for iPhone — prevents scroll conflict ──
+  let touchTaskId = null, touchGhost = null, touchDragging = false;
 
-  document.addEventListener('touchstart', e => {
-    const chip = e.target.closest('.chip');
-    if (!chip) return;
-    touchTaskId = chip.dataset ? null : null;
-    // get id from onclick attr
-    const match = chip.getAttribute('onclick') && chip.getAttribute('ondragstart');
-    // use a different approach — store on element
-  }, { passive: true });
-
-  // Simpler touch approach: long-press chip → highlight droppable days
   document.getElementById('undatedChips').addEventListener('touchstart', e => {
     const chip = e.target.closest('.chip');
     if (!chip) return;
-    const m = chip.getAttribute('ondragstart').match(/'([^']+)'/);
+    const m = chip.getAttribute('ondragstart') && chip.getAttribute('ondragstart').match(/'([^']+)'/);
     if (!m) return;
-    touchTaskId = m[1];
-    const touch = e.touches[0];
+    touchTaskId  = m[1];
+    touchDragging = false;
+    const touch  = e.touches[0];
 
-    // Create ghost
+    // Create ghost immediately but hidden until moved
     touchGhost = chip.cloneNode(true);
-    touchGhost.style.cssText = `position:fixed;opacity:0.85;pointer-events:none;z-index:9999;top:${touch.clientY-20}px;left:${touch.clientX-40}px;transform:scale(1.05);transition:none;`;
+    touchGhost.style.cssText = `position:fixed;opacity:0;pointer-events:none;z-index:9999;top:${touch.clientY-20}px;left:${touch.clientX-40}px;transform:scale(1.08);transition:opacity 0.1s;`;
     document.body.appendChild(touchGhost);
   }, { passive: true });
 
   document.addEventListener('touchmove', e => {
-    if (!touchGhost) return;
+    if (!touchGhost || !touchTaskId) return;
+
+    // Once finger moves, lock scroll and show ghost
+    if (!touchDragging) {
+      touchDragging = true;
+      touchGhost.style.opacity = '0.9';
+      document.body.style.overflow = 'hidden';
+      document.body.style.touchAction = 'none';
+    }
+
+    e.preventDefault(); // blocks scroll while dragging
+
     const touch = e.touches[0];
     touchGhost.style.top  = (touch.clientY - 20) + 'px';
     touchGhost.style.left = (touch.clientX - 40) + 'px';
-    // highlight cell under finger
+
     document.querySelectorAll('.cal-day.drag-over').forEach(el => el.classList.remove('drag-over'));
-    const el = document.elementFromPoint(touch.clientX, touch.clientY);
+    const el   = document.elementFromPoint(touch.clientX, touch.clientY);
     const cell = el && el.closest('.cal-day:not(.other-month)');
     if (cell) cell.classList.add('drag-over');
-  }, { passive: true });
+  }, { passive: false }); // passive:false required to call preventDefault
 
   document.addEventListener('touchend', e => {
+    // Restore scroll
+    document.body.style.overflow = '';
+    document.body.style.touchAction = '';
     document.querySelectorAll('.cal-day.drag-over').forEach(el => el.classList.remove('drag-over'));
+
     if (!touchGhost) return;
-    touchGhost.remove(); touchGhost = null;
-    if (!touchTaskId) return;
+    touchGhost.remove();
+    touchGhost = null;
+
+    if (!touchTaskId || !touchDragging) {
+      // Was a tap, not a drag — let normal click handle it
+      touchTaskId  = null;
+      touchDragging = false;
+      return;
+    }
+
     const touch = e.changedTouches[0];
     const el    = document.elementFromPoint(touch.clientX, touch.clientY);
     const cell  = el && el.closest('.cal-day:not(.other-month)');
@@ -835,12 +831,14 @@
       const dateStr = cell.getAttribute('data-date');
       const t = tasks.find(t => t.id === touchTaskId);
       if (t && dateStr) {
-        t.dueDate = dateStr; t.bucket = bucketForDate(dateStr);
+        t.dueDate = dateStr;
+        t.bucket  = bucketForDate(dateStr);
         save(); render();
         showToast('Due date set to ' + formatDue(dateStr));
       }
     }
-    touchTaskId = null;
+    touchTaskId   = null;
+    touchDragging = false;
   });
 
   // ══════════════════════════════
@@ -874,6 +872,7 @@
             ${t.source ? `<span class="tag">${escHtml(t.source)}</span>` : ''}
             ${t.tag    ? `<span class="tag">${escHtml(t.tag)}</span>`    : ''}
           </div>
+          ${t.notes ? `<div style="font-size:12px;color:var(--ink-light);margin-top:6px;line-height:1.5;">${escHtml(t.notes)}</div>` : ''}
           ${t.dueDate && !t.done ? `<a class="detail-gcal-btn" href="${gcalUrl(t)}" target="_blank" rel="noopener">Add to Google Calendar</a>` : ''}
         </div>
         <div class="detail-actions">
@@ -892,8 +891,7 @@
   function openDetailFromId(id) {
     const t = tasks.find(t => t.id === id);
     if (!t) return;
-    // Open move modal as the detail action for undated chips
-    openMoveModal(id);
+    openMoveModal(id, true);
   }
 
   function closeDayPanel() {
@@ -945,9 +943,10 @@
     if (!t) return;
     editingTaskId = id;
     formState = { urgency: t.bucket, source: t.source };
-    document.getElementById('taskText').value = t.text;
-    document.getElementById('taskTag').value  = t.tag || '';
-    document.getElementById('taskDue').value  = t.dueDate || '';
+    document.getElementById('taskText').value  = t.text;
+    document.getElementById('taskTag').value   = t.tag || '';
+    document.getElementById('taskDue').value   = t.dueDate || '';
+    document.getElementById('taskNotes').value = t.notes || '';
     document.querySelectorAll('.pill').forEach(p => p.className = 'pill' + (p.dataset.value ? ` pill` : ''));
     // re-select bucket pill
     const bPill = document.querySelector(`#urgencyPills .pill[data-value="${t.bucket}"]`);
@@ -970,6 +969,7 @@
     document.getElementById('taskText').value = prefillText || '';
     document.getElementById('taskTag').value  = '';
     document.getElementById('taskDue').value  = prefillDate || '';
+    document.getElementById('taskNotes').value = '';
     // Reset all pills to unselected state (keep data-value for styling)
     document.querySelectorAll('#urgencyPills .pill').forEach(p => { p.className = 'pill'; });
     document.querySelectorAll('#sourcePills .pill').forEach(p => { p.className = 'pill'; });
@@ -1023,13 +1023,14 @@
         t.source  = formState.source;
         t.tag     = document.getElementById('taskTag').value.trim();
         t.dueDate = document.getElementById('taskDue').value || null;
+        t.notes   = document.getElementById('taskNotes').value.trim() || null;
       }
       save(); render(); closeModal();
       if (activeDayPanelDate) renderDayPanel(activeDayPanelDate);
       showToast('Task updated');
     } else {
       // ── Add new task ──
-      tasks.unshift({ id: Date.now().toString(), text, bucket: formState.urgency, source: formState.source, tag: document.getElementById('taskTag').value.trim(), dueDate: document.getElementById('taskDue').value || null, done: false, created: new Date().toISOString() });
+      tasks.unshift({ id: Date.now().toString(), text, bucket: formState.urgency, source: formState.source, tag: document.getElementById('taskTag').value.trim(), dueDate: document.getElementById('taskDue').value || null, notes: document.getElementById('taskNotes').value.trim() || null, done: false, created: new Date().toISOString() });
       save(); render(); closeModal();
       document.getElementById('body-'    + formState.urgency).classList.add('open');
       document.getElementById('chevron-' + formState.urgency).classList.add('open');
@@ -1040,7 +1041,31 @@
   // ══════════════════════════════
   // MOVE MODAL
   // ══════════════════════════════
-  function openMoveModal(id) { moveTargetId = id; document.getElementById('moveModal').classList.add('open'); }
+  function openMoveModal(id, showDatePicker) {
+    moveTargetId = id;
+    const dateRow = document.getElementById('moveModalDateRow');
+    if (showDatePicker) {
+      document.getElementById('moveModalDate').value = '';
+      dateRow.style.display = 'block';
+    } else {
+      dateRow.style.display = 'none';
+    }
+    document.getElementById('moveModal').classList.add('open');
+  }
+
+  function applyMoveDate() {
+    const date = document.getElementById('moveModalDate').value;
+    if (!date) { showToast('Pick a date first'); return; }
+    const t = tasks.find(t => t.id === moveTargetId);
+    if (t) {
+      t.dueDate = date;
+      t.bucket  = bucketForDate(date);
+      save(); render();
+      showToast('Due date set to ' + formatDue(date));
+    }
+    document.getElementById('moveModal').classList.remove('open');
+    moveTargetId = null;
+  }
   function closeMoveModal(e) { if (e.target === document.getElementById('moveModal')) { document.getElementById('moveModal').classList.remove('open'); moveTargetId = null; } }
   function moveTask(bucket) {
     const t = tasks.find(t => t.id === moveTargetId);
@@ -1200,37 +1225,6 @@
   function handleHelpOverlayClick(e) { if (e.target === document.getElementById('helpOverlay')) closeHelp(); }
 
   function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
-
-  // ══════════════════════════════
-  // SERVICE WORKER — auto-update
-  // ══════════════════════════════
-  let pendingSW = null;
-
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('/sw.js').then(reg => {
-      reg.update();
-      setInterval(() => reg.update(), 60 * 1000);
-
-      reg.addEventListener('updatefound', () => {
-        const newSW = reg.installing;
-        newSW.addEventListener('statechange', () => {
-          if (newSW.state === 'installed' && navigator.serviceWorker.controller) {
-            pendingSW = newSW;
-            document.getElementById('updateBanner').classList.add('show');
-          }
-        });
-      });
-    });
-
-    navigator.serviceWorker.addEventListener('controllerchange', () => {
-      window.location.reload();
-    });
-  }
-
-  function applyUpdate() {
-    if (pendingSW) pendingSW.postMessage('SKIP_WAITING');
-    else window.location.reload();
-  }
 
   // ══════════════════════════════
   // INIT
