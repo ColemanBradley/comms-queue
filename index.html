@@ -1268,35 +1268,41 @@
   }
   function handleOverlayClick(e) { if (e.target === document.getElementById('modalOverlay')) closeModal(); }
 
-  // ── Swipe-down-to-close modal — handle only ──
+  // ── Over-scroll-to-close modal — natural iOS sheet behaviour ──
   (function initModalSwipe() {
     const sheet    = document.getElementById('modalSheet');
-    const handle   = sheet.querySelector('.modal-drag-handle');
     let startY     = 0;
-    let currentY   = 0;
     let isDragging = false;
+    let currentY   = 0;
     const THRESHOLD = 100;
 
-    handle.addEventListener('touchstart', e => {
+    sheet.addEventListener('touchstart', e => {
       startY     = e.touches[0].clientY;
       currentY   = e.touches[0].clientY;
       isDragging = true;
       sheet.style.transition = 'none';
     }, { passive: true });
 
-    handle.addEventListener('touchmove', e => {
+    sheet.addEventListener('touchmove', e => {
       if (!isDragging) return;
-      currentY     = e.touches[0].clientY;
-      const deltaY = Math.max(0, currentY - startY);
-      sheet.style.transform = `translateY(${deltaY}px)`;
+      currentY       = e.touches[0].clientY;
+      const deltaY   = currentY - startY;
+      const atTop    = sheet.scrollTop <= 0;
+
+      // Only intercept when pulling down AND already at the top
+      if (deltaY > 0 && atTop) {
+        sheet.style.transform = `translateY(${deltaY}px)`;
+      }
     }, { passive: true });
 
-    handle.addEventListener('touchend', () => {
+    sheet.addEventListener('touchend', () => {
       if (!isDragging) return;
       isDragging = false;
       sheet.style.transition = '';
-      const deltaY = Math.max(0, currentY - startY);
-      if (deltaY > THRESHOLD) {
+      const deltaY = currentY - startY;
+      const atTop  = sheet.scrollTop <= 0;
+
+      if (deltaY > THRESHOLD && atTop) {
         closeModal();
       } else {
         sheet.style.transform = 'translateY(0)';
