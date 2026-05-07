@@ -671,17 +671,24 @@
   function toggleDark() {
     const nowDark = !document.documentElement.classList.contains('dark');
     localStorage.setItem('commsDark', nowDark ? '1' : '0');
+    localStorage.setItem('commsDarkSetAt', Date.now().toString());
     applyDark(nowDark);
   }
   function toggleDarkFromMenu() {
     toggleDark();
   }
-  // Init: stored preference → system preference → light
+  // Init: stored preference (if < 4hrs old) → system → light
   (function initDark() {
-    const stored = localStorage.getItem('commsDark');
-    if (stored !== null) {
+    const stored   = localStorage.getItem('commsDark');
+    const setAt    = parseInt(localStorage.getItem('commsDarkSetAt') || '0', 10);
+    const expired  = (Date.now() - setAt) > 4 * 60 * 60 * 1000;
+
+    if (stored !== null && !expired) {
       applyDark(stored === '1');
     } else {
+      // Expired or never set — clear and follow system
+      localStorage.removeItem('commsDark');
+      localStorage.removeItem('commsDarkSetAt');
       applyDark(window.matchMedia('(prefers-color-scheme: dark)').matches);
     }
     window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', e => {
