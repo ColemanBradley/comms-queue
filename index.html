@@ -160,11 +160,11 @@
   .cal-dow-cell { text-align: center; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--ink-faint); padding: 4px 0; }
 
   /* Grid */
-  .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; }
+  .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
 
   .cal-day {
-    background: white; border-radius: 8px; min-height: 76px;
-    padding: 5px 5px 4px; position: relative;
+    background: white; border-radius: 8px; min-height: 90px;
+    padding: 6px 5px 5px; position: relative;
     border: 1.5px solid transparent;
     transition: border-color 0.15s, background 0.15s;
     cursor: pointer;
@@ -177,15 +177,15 @@
   .cal-day.drag-over { background: #EDE9E3; border-color: var(--ink) !important; }
   .cal-day.has-tasks { box-shadow: 0 1px 4px rgba(28,25,23,0.07); }
 
-  .cal-day-num { font-size: 11px; font-weight: 500; color: var(--ink-light); line-height: 1; margin-bottom: 3px; }
+  .cal-day-num { font-size: 12px; font-weight: 500; color: var(--ink-light); line-height: 1; margin-bottom: 4px; }
 
   /* Named mini-chips replace dots */
-  .cal-chips { display: flex; flex-direction: column; gap: 2px; }
+  .cal-chips { display: flex; flex-direction: column; gap: 3px; }
   .cal-chip {
-    display: block; font-size: 9px; font-weight: 600;
-    padding: 1px 4px; border-radius: 3px;
+    display: block; font-size: 10px; font-weight: 600;
+    padding: 2px 4px; border-radius: 3px;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-    cursor: pointer; line-height: 1.5;
+    cursor: pointer; line-height: 1.4;
     transition: opacity 0.1s;
   }
   .cal-chip:hover { opacity: 0.75; }
@@ -193,7 +193,7 @@
   .cal-chip-nextweek { background: var(--nextweek-tag); color: var(--nextweek-accent); }
   .cal-chip-parking  { background: var(--parking-tag);  color: var(--parking-accent); }
   .cal-chip-done     { background: #F0EDE8; color: var(--ink-faint); text-decoration: line-through; }
-  .cal-overflow { font-size: 9px; font-weight: 700; color: var(--ink-faint); margin-top: 1px; }
+  .cal-overflow { font-size: 9px; font-weight: 700; color: var(--ink-faint); margin-top: 2px; }
 
   /* ── Day detail panel (slides up) ── */
   .day-panel-overlay { position: fixed; inset: 0; background: var(--modal-bg); z-index: 200; display: flex; align-items: flex-end; justify-content: center; opacity: 0; pointer-events: none; transition: opacity 0.2s; }
@@ -297,7 +297,7 @@
     .help-panel { border-radius: 20px; max-height: 85dvh; }
     .day-panel-overlay { align-items: center; padding: 20px; }
     .day-panel { border-radius: 20px; max-height: 70dvh; }
-    .cal-day { min-height: 74px; }
+    .cal-day { min-height: 100px; }
   }
 </style>
 </head>
@@ -800,6 +800,19 @@
     const touch = e.touches[0];
     touchGhost.style.top  = (touch.clientY - 20) + 'px';
     touchGhost.style.left = (touch.clientX - 40) + 'px';
+
+    // ── Edge-scroll: when finger is near top/bottom, scroll the page ──
+    const EDGE = 80;       // px from edge that triggers scroll
+    const SPEED = 10;      // px per frame
+    const vy = touch.clientY;
+    const vh = window.innerHeight;
+    if (vy < EDGE) {
+      // Near top — scroll up
+      window.scrollBy(0, -SPEED * (1 - vy / EDGE));
+    } else if (vy > vh - EDGE) {
+      // Near bottom — scroll down
+      window.scrollBy(0, SPEED * ((vy - (vh - EDGE)) / EDGE));
+    }
 
     document.querySelectorAll('.cal-day.drag-over').forEach(el => el.classList.remove('drag-over'));
     const el   = document.elementFromPoint(touch.clientX, touch.clientY);
