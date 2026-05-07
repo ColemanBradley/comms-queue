@@ -6,9 +6,6 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Comms Queue</title>
-<meta name="theme-color" content="#F7F3EE">
-<link rel="manifest" href="/manifest.json">
-<link rel="apple-touch-icon" href="/icon-192.png">
 <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -347,9 +344,22 @@
   ══════════════════════════════ */
   .modal-overlay { position: fixed; inset: 0; background: var(--modal-bg); z-index: 300; display: flex; align-items: flex-end; justify-content: center; opacity: 0; pointer-events: none; transition: opacity 0.2s; }
   .modal-overlay.open { opacity: 1; pointer-events: all; }
-  .modal { background: white; border-radius: 20px 20px 0 0; padding: 28px 20px 40px; width: 100%; max-width: 680px; max-height: 92dvh; overflow-y: auto; transform: translateY(30px); transition: transform 0.25s cubic-bezier(0.34,1.2,0.64,1); box-shadow: 0 -4px 32px rgba(28,25,23,0.15); }
+  .modal { background: white; border-radius: 20px 20px 0 0; padding: 10px 20px 40px; width: 100%; max-width: 680px; max-height: 92dvh; overflow-y: auto; transform: translateY(30px); transition: transform 0.25s cubic-bezier(0.34,1.2,0.64,1); box-shadow: 0 -4px 32px rgba(28,25,23,0.15); touch-action: none; }
   .modal-overlay.open .modal { transform: translateY(0); }
   .modal-title { font-family: 'DM Serif Display', serif; font-size: 20px; margin-bottom: 20px; }
+
+  .modal-drag-handle { width: 36px; height: 4px; background: #E7E5E4; border-radius: 2px; margin: 0 auto 16px; cursor: grab; }
+  html.dark .modal-drag-handle { background: #3A3740; }
+
+  .btn-delete {
+    flex: 1; padding: 14px; border-radius: 12px;
+    border: 1.5px solid #FECACA; background: #FFF1F0;
+    font-family: 'DM Sans', sans-serif; font-size: 15px;
+    font-weight: 500; color: var(--thisweek-accent); cursor: pointer;
+    transition: background 0.15s;
+  }
+  .btn-delete:hover { background: #FEE2E2; }
+  html.dark .btn-delete { background: #3B1F1F; border-color: #5C2222; }
   .field { margin-bottom: 16px; }
   .field label { display: block; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--ink-faint); margin-bottom: 6px; }
   .field input, .field textarea { width: 100%; padding: 12px 14px; border: 1.5px solid #E7E5E4; border-radius: 10px; font-family: 'DM Sans', sans-serif; font-size: 15px; color: var(--ink); background: white; outline: none; transition: border-color 0.15s; -webkit-appearance: none; }
@@ -510,7 +520,8 @@
 
 <!-- Add task modal -->
 <div class="modal-overlay" id="modalOverlay" onclick="handleOverlayClick(event)">
-  <div class="modal">
+  <div class="modal" id="modalSheet">
+    <div class="modal-drag-handle"></div>
     <div class="modal-title" id="modalTitle">New Task</div>
     <div class="field"><label>What's the request?</label><textarea id="taskText" placeholder="e.g. Update the welcome slide for Mother's Day…" rows="2"></textarea></div>
     <div class="field">
@@ -535,6 +546,7 @@
     <div class="field"><label>Notes <span style="font-weight:400;text-transform:none;letter-spacing:0">(optional)</span></label><textarea id="taskNotes" placeholder="Any extra context, links, or details…" rows="2"></textarea></div>
     <div class="modal-actions">
       <button class="btn-cancel" onclick="closeModal()">Cancel</button>
+      <button class="btn-delete" id="deleteBtn" onclick="deleteEditingTask()" style="display:none">Delete</button>
       <button class="btn-add" id="addBtn" onclick="addTask()" disabled>Add Task</button>
     </div>
   </div>
@@ -1195,6 +1207,7 @@
     }
     document.getElementById('addBtn').disabled = false;
     document.getElementById('addBtn').textContent = 'Save Changes';
+    document.getElementById('deleteBtn').style.display = 'block';
     document.getElementById('modalTitle').textContent = 'Edit Task';
     document.getElementById('modalOverlay').classList.add('open');
     setTimeout(() => { const ta = document.getElementById('taskText'); ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }, 300);
@@ -1212,6 +1225,7 @@
     document.querySelectorAll('#sourcePills .pill').forEach(p => { p.className = 'pill'; });
     document.getElementById('addBtn').disabled = !(prefillText && prefillText.trim());
     document.getElementById('addBtn').textContent = 'Add Task';
+    document.getElementById('deleteBtn').style.display = 'none';
     document.getElementById('modalTitle').textContent = prefillText ? 'Review & Triage' : 'New Task';
     // Pre-select bucket if provided
     if (prefillBucket) {
@@ -1230,12 +1244,60 @@
     document.getElementById('modalOverlay').classList.add('open');
     setTimeout(() => { const ta = document.getElementById('taskText'); ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }, 300);
   }
+  function deleteEditingTask() {
+    if (!editingTaskId) return;
+    tasks = tasks.filter(t => t.id !== editingTaskId);
+    save(); render(); closeModal();
+    if (activeDayPanelDate) renderDayPanel(activeDayPanelDate);
+    showToast('Task deleted');
+  }
+
   function closeModal() {
     document.getElementById('modalOverlay').classList.remove('open');
+    document.getElementById('modalSheet').style.transform = '';
     editingTaskId = null;
     document.getElementById('addBtn').textContent = 'Add Task';
   }
   function handleOverlayClick(e) { if (e.target === document.getElementById('modalOverlay')) closeModal(); }
+
+  // ── Swipe-down-to-close modal ──
+  (function initModalSwipe() {
+    const sheet    = document.getElementById('modalSheet');
+    let startY     = 0;
+    let currentY   = 0;
+    let isDragging = false;
+    const THRESHOLD = 120; // px to trigger close
+
+    sheet.addEventListener('touchstart', e => {
+      // Only allow drag from the handle or top area (first 60px)
+      const touch = e.touches[0];
+      const rect  = sheet.getBoundingClientRect();
+      if (touch.clientY - rect.top > 60) return;
+      startY     = touch.clientY;
+      currentY   = touch.clientY;
+      isDragging = true;
+    }, { passive: true });
+
+    sheet.addEventListener('touchmove', e => {
+      if (!isDragging) return;
+      currentY     = e.touches[0].clientY;
+      const deltaY = Math.max(0, currentY - startY); // only allow downward
+      sheet.style.transform = `translateY(${deltaY}px)`;
+      sheet.style.transition = 'none';
+    }, { passive: true });
+
+    sheet.addEventListener('touchend', () => {
+      if (!isDragging) return;
+      isDragging = false;
+      const deltaY = Math.max(0, currentY - startY);
+      sheet.style.transition = '';
+      if (deltaY > THRESHOLD) {
+        closeModal();
+      } else {
+        sheet.style.transform = 'translateY(0)';
+      }
+    });
+  })();
 
   function selectPill(group, value, el) {
     const pid = group === 'urgency' ? 'urgencyPills' : 'sourcePills';
