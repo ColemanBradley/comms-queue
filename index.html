@@ -711,6 +711,15 @@
       localStorage.setItem('commsTasks', JSON.stringify(taskList));
       localStorage.setItem('commsTasksVersion', String(SCHEMA_VERSION));
     }
+    // Silent 60-day cleanup — permanently delete old completed tasks
+    const sixtyDaysAgo = Date.now() - 60 * 24 * 60 * 60 * 1000;
+    const before = taskList.length;
+    taskList = taskList.filter(t =>
+      !t.done || !t.completedAt || new Date(t.completedAt).getTime() > sixtyDaysAgo
+    );
+    if (taskList.length !== before) {
+      localStorage.setItem('commsTasks', JSON.stringify(taskList));
+    }
     return taskList;
   }
 
@@ -801,9 +810,15 @@
     document.getElementById('totalCount').textContent = total + ' task' + (total !== 1 ? 's' : '');
   }
 
+  function isHiddenFromBucket(t) {
+    if (!t.done || !t.completedAt) return false;
+    return (Date.now() - new Date(t.completedAt).getTime()) > 24 * 60 * 60 * 1000;
+  }
+
   function renderList() {
     ['thisweek','nextweek','parking'].forEach(b => {
-      const mine = sortedByDue(tasks.filter(t => t.bucket === b));
+      const all  = sortedByDue(tasks.filter(t => t.bucket === b));
+      const mine = all.filter(t => !isHiddenFromBucket(t));
       document.getElementById('badge-' + b).textContent = mine.filter(t => !t.done).length;
       document.getElementById('body-'  + b).innerHTML   = mine.length === 0
         ? '<div class="empty-state">Nothing here yet</div>'
@@ -1100,7 +1115,11 @@
 
   function toggleDoneFromPanel(id) {
     const t = tasks.find(t => t.id === id);
-    if (t) { t.done = !t.done; save(); render(); if (activeDayPanelDate) renderDayPanel(activeDayPanelDate); }
+    if (t) {
+      t.done = !t.done;
+      t.completedAt = t.done ? new Date().toISOString() : null;
+      save(); render(); if (activeDayPanelDate) renderDayPanel(activeDayPanelDate);
+    }
   }
 
   function openDetailFromId(id) {
@@ -1136,7 +1155,11 @@
   // ══════════════════════════════
   function toggleDone(id) {
     const t = tasks.find(t => t.id === id);
-    if (t) { t.done = !t.done; save(); render(); }
+    if (t) {
+      t.done = !t.done;
+      t.completedAt = t.done ? new Date().toISOString() : null;
+      save(); render();
+    }
   }
 
   // ══════════════════════════════
