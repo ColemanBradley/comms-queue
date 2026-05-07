@@ -1243,6 +1243,7 @@
       save(); render(); closeModal();
       document.getElementById('body-'    + formState.urgency).classList.add('open');
       document.getElementById('chevron-' + formState.urgency).classList.add('open');
+      if (activeDayPanelDate) renderDayPanel(activeDayPanelDate);
       showToast('Added to ' + labels[formState.urgency]);
     }
   }
