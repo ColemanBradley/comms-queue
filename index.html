@@ -1218,6 +1218,7 @@
     document.getElementById('deleteBtn').style.display = 'block';
     document.getElementById('modalTitle').textContent = 'Edit Task';
     document.getElementById('modalOverlay').classList.add('open');
+    document.body.style.overflow = 'hidden';
     setTimeout(() => { const ta = document.getElementById('taskText'); ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }, 300);
   }
 
@@ -1250,6 +1251,7 @@
       if (el) selectPill('urgency', b, el);
     }
     document.getElementById('modalOverlay').classList.add('open');
+    document.body.style.overflow = 'hidden';
     setTimeout(() => { const ta = document.getElementById('taskText'); ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }, 300);
   }
   function deleteEditingTask() {
@@ -1263,6 +1265,7 @@
   function closeModal() {
     document.getElementById('modalOverlay').classList.remove('open');
     document.getElementById('modalSheet').style.transform = '';
+    document.body.style.overflow = '';
     editingTaskId = null;
     document.getElementById('addBtn').textContent = 'Add Task';
   }
