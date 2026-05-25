@@ -776,8 +776,9 @@
     const email    = document.getElementById('loginEmail').value.trim();
     const password = document.getElementById('loginPassword').value;
     document.getElementById('loginError').textContent = '';
-    const { error } = await supa.auth.signInWithPassword({ email, password });
+    const { data, error } = await supa.auth.signInWithPassword({ email, password });
     if (error) { document.getElementById('loginError').textContent = error.message; return; }
+    if (data?.user) localStorage.setItem('cqUserId', data.user.id);
   }
 
   async function handleSignUp() {
@@ -785,23 +786,18 @@
     const password = document.getElementById('loginPassword').value;
     document.getElementById('loginError').textContent = '';
     if (password.length < 6) { document.getElementById('loginError').textContent = 'Password must be at least 6 characters.'; return; }
-    const { error } = await supa.auth.signUp({ email, password });
+    const { data, error } = await supa.auth.signUp({ email, password });
     if (error) { document.getElementById('loginError').textContent = error.message; return; }
+    if (data?.user) localStorage.setItem('cqUserId', data.user.id);
     document.getElementById('loginError').style.color = '#16A34A';
     document.getElementById('loginError').textContent = 'Account created! Check your email to confirm, then sign in.';
   }
 
   async function handleSignOut() {
     closeMenu();
-    try {
-      await supa.auth.signOut({ scope: 'local' });
-    } catch(e) {
-      console.error('Sign out error:', e);
-    }
-    // Clear all Supabase session keys from localStorage manually
-    // to prevent silent session restoration on next open
+    try { await supa.auth.signOut({ scope: 'local' }); } catch(e) {}
     Object.keys(localStorage)
-      .filter(k => k.startsWith('sb-') || k.includes('supabase'))
+      .filter(k => k.startsWith('sb-') || k.includes('supabase') || k === 'cqUserId' || k === CACHE_KEY)
       .forEach(k => localStorage.removeItem(k));
     currentUser = null;
     tasks = [];
@@ -839,6 +835,7 @@
     }
 
     if (event === 'SIGNED_IN' && session && session.user) {
+      localStorage.setItem('cqUserId', session.user.id);
       currentUser = session.user;
       hideLoginScreen();
       await migrateLocalToSupabase();
@@ -913,6 +910,20 @@
       await supa.from('tasks').delete().in('id', stale.map(r => r.id));
     }
     tasks = (data || []).filter(r => !stale.find(s => s.id === r.id)).map(rowToTask);
+    writeCache();
+  }
+
+  const CACHE_KEY = 'cqTaskCache';
+
+  function writeCache() {
+    try { localStorage.setItem(CACHE_KEY, JSON.stringify(tasks)); } catch(e) {}
+  }
+
+  function readCache() {
+    try {
+      const raw = localStorage.getItem(CACHE_KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch(e) { return null; }
   }
 
   // ── Save a single task to Supabase (upsert) ──
@@ -920,6 +931,7 @@
     if (!currentUser) return;
     const { error } = await supa.from('tasks').upsert(taskToRow(t));
     if (error) console.error('Save error:', error);
+    writeCache();
   }
 
   // ── Delete a task from Supabase ──
@@ -927,6 +939,7 @@
     if (!currentUser) return;
     const { error } = await supa.from('tasks').delete().eq('id', id).eq('user_id', currentUser.id);
     if (error) console.error('Delete error:', error);
+    writeCache();
   }
 
   // ── Show force-migrate button if local data exists ──
@@ -1835,24 +1848,48 @@
   // INIT — check for existing session first
   // ══════════════════════════════
   // ══════════════════════════════
-  // INIT — wait for Supabase to fully initialize before checking session
+  // INIT — load cache instantly, hydrate from Supabase in background
   // ══════════════════════════════
   setTimeout(async function init() {
-    const { data: { session } } = await supa.auth.getSession();
-    if (session && session.user) {
-      const { data: refreshed, error: refreshError } = await supa.auth.refreshSession();
-      if (refreshError || !refreshed.session) {
-        document.getElementById('loginScreen').style.display = 'flex';
-        document.querySelector('header').style.display = 'none';
-        return;
+    const storedUserId = localStorage.getItem('cqUserId');
+
+    if (storedUserId) {
+      // Load from cache immediately — no flash, no wait
+      const cached = readCache();
+      if (cached && cached.length > 0) {
+        tasks = cached;
+        hideLoginScreen();
+        render();
+      } else {
+        hideLoginScreen();
       }
-      currentUser = refreshed.session.user;
-      hideLoginScreen();
+
+      // Then hydrate from Supabase in the background
+      let userId = storedUserId;
+      try {
+        const { data: { session } } = await supa.auth.getSession();
+        if (session?.user) {
+          userId = session.user.id;
+          currentUser = session.user;
+        } else {
+          const { data: refreshed } = await supa.auth.refreshSession();
+          if (refreshed?.session?.user) {
+            userId = refreshed.session.user.id;
+            currentUser = refreshed.session.user;
+          } else {
+            currentUser = { id: userId };
+          }
+        }
+      } catch(e) {
+        currentUser = { id: userId };
+      }
+
       await migrateLocalToSupabase();
       await loadFromSupabase();
       render();
       checkUrlParam();
     } else {
+      // No stored user — show login
       document.getElementById('loginScreen').style.display = 'flex';
       document.querySelector('header').style.display = 'none';
     }
