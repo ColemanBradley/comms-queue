@@ -447,6 +447,9 @@
     <button onclick="handleSignIn()" style="width:100%;padding:14px;border-radius:12px;border:none;background:#1C1917;font-family:'DM Sans',sans-serif;font-size:15px;font-weight:600;color:white;cursor:pointer;margin-top:4px;">Sign In</button>
     <button onclick="handleSignUp()" style="width:100%;padding:14px;border-radius:12px;border:1.5px solid #E7E5E4;background:white;font-family:'DM Sans',sans-serif;font-size:15px;font-weight:500;color:var(--ink-light);cursor:pointer;">Create Account</button>
     <p id="loginError" style="font-size:13px;color:#DC2626;text-align:center;min-height:18px;"></p>
+    <div id="forceMigrateWrap" style="display:none;margin-top:8px;text-align:center;">
+      <button onclick="forceMigrate()" style="background:none;border:none;font-family:'DM Sans',sans-serif;font-size:12px;color:var(--ink-faint);text-decoration:underline;cursor:pointer;">Already signed in but missing data? Tap here</button>
+    </div>
   </div>
 </div>
 
@@ -791,23 +794,19 @@
   async function handleSignOut() {
     closeMenu();
     await supa.auth.signOut();
-    tasks = [];
-    render();
-    showLoginScreen();
   }
 
   function showLoginScreen() {
     document.getElementById('loginScreen').style.display = 'flex';
     document.querySelector('header').style.display = 'none';
-    document.getElementById('listView').style.display = 'none';
-    document.getElementById('calView').style.display = 'none';
-    document.getElementById('calFab').style.display = 'none';
+    document.getElementById('listView').classList.add('hidden');
+    document.getElementById('calView').classList.remove('visible');
+    document.getElementById('calFab').classList.remove('visible');
   }
 
   function hideLoginScreen() {
     document.getElementById('loginScreen').style.display = 'none';
     document.querySelector('header').style.display = '';
-    // Reset view state cleanly
     const now = new Date();
     calYear  = now.getFullYear();
     calMonth = now.getMonth();
@@ -825,6 +824,8 @@
       checkUrlParam();
     } else {
       currentUser = null;
+      tasks = [];
+      render();
       showLoginScreen();
     }
   });
@@ -891,15 +892,48 @@
     if (error) console.error('Delete error:', error);
   }
 
-  // ── Migrate existing localStorage tasks to Supabase (runs once) ──
+  // ── Show force-migrate button if local data exists ──
+  (function checkForLocalData() {
+    const raw = localStorage.getItem('commsTasks');
+    if (raw) {
+      try {
+        const local = JSON.parse(raw);
+        if (local && local.length > 0) {
+          document.getElementById('forceMigrateWrap').style.display = 'block';
+        }
+      } catch(e) {}
+    }
+  })();
+
+  // ── Force re-migration — clears flag and re-runs ──
+  async function forceMigrate() {
+    if (!currentUser) {
+      document.getElementById('loginError').style.color = '#DC2626';
+      document.getElementById('loginError').textContent = 'Sign in first, then tap this again.';
+      return;
+    }
+    localStorage.removeItem('commsSupaMigrated');
+    await migrateLocalToSupabase();
+    await loadFromSupabase();
+    render();
+    document.getElementById('forceMigrateWrap').style.display = 'none';
+  }
   async function migrateLocalToSupabase() {
     const raw = localStorage.getItem('commsTasks');
     if (!raw) return;
-    const migrationDone = localStorage.getItem('commsSupaMigrated');
-    if (migrationDone) return;
 
-    const localTasks = JSON.parse(raw);
-    if (localTasks.length === 0) {
+    // Verify data actually exists in Supabase before skipping migration
+    const migrationDone = localStorage.getItem('commsSupaMigrated');
+    if (migrationDone) {
+      const { data: existing } = await supa.from('tasks').select('id').eq('user_id', currentUser.id).limit(1);
+      if (existing && existing.length > 0) return; // data confirmed in Supabase
+      // Data not in Supabase despite flag — re-run migration
+      localStorage.removeItem('commsSupaMigrated');
+    }
+
+    let localTasks;
+    try { localTasks = JSON.parse(raw); } catch(e) { return; }
+    if (!localTasks || localTasks.length === 0) {
       localStorage.setItem('commsSupaMigrated', '1');
       return;
     }
