@@ -798,6 +798,11 @@
     } catch(e) {
       console.error('Sign out error:', e);
     }
+    // Clear all Supabase session keys from localStorage manually
+    // to prevent silent session restoration on next open
+    Object.keys(localStorage)
+      .filter(k => k.startsWith('sb-') || k.includes('supabase'))
+      .forEach(k => localStorage.removeItem(k));
     currentUser = null;
     tasks = [];
     render();
@@ -823,7 +828,18 @@
 
   // ── Auth state listener ──
   supa.auth.onAuthStateChange(async (event, session) => {
-    if (session) {
+    console.log('[Auth]', event, session?.user?.email);
+
+    if (event === 'SIGNED_OUT') {
+      currentUser = null;
+      tasks = [];
+      render();
+      showLoginScreen();
+      return;
+    }
+
+    if (session && session.user) {
+      // Only proceed if we have a real valid session
       currentUser = session.user;
       hideLoginScreen();
       await migrateLocalToSupabase();
@@ -831,6 +847,7 @@
       render();
       checkUrlParam();
     } else {
+      // No valid session — show login
       currentUser = null;
       tasks = [];
       render();
@@ -875,8 +892,21 @@
 
   // ── Load from Supabase ──
   async function loadFromSupabase() {
-    const { data, error } = await supa.from('tasks').select('*').eq('user_id', currentUser.id);
+    let { data, error } = await supa.from('tasks').select('*').eq('user_id', currentUser.id);
+    
+    // If we get an auth error, try refreshing the session once and retry
+    if (error && (error.code === 'PGRST301' || error.message?.includes('JWT'))) {
+      const { data: refreshed } = await supa.auth.refreshSession();
+      if (refreshed?.session) {
+        currentUser = refreshed.session.user;
+        const retry = await supa.from('tasks').select('*').eq('user_id', currentUser.id);
+        data  = retry.data;
+        error = retry.error;
+      }
+    }
+
     if (error) { console.error('Load error:', error); return; }
+    
     // 60-day cleanup
     const sixtyDaysAgo = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString();
     const stale = (data || []).filter(r => r.done && r.completed_at && r.completed_at < sixtyDaysAgo);
@@ -1803,11 +1833,31 @@
   function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
   // ══════════════════════════════
-  // INIT — auth listener drives startup
+  // INIT — check for existing session first
   // ══════════════════════════════
-  // Show login screen immediately while auth state is determined
-  document.getElementById('loginScreen').style.display = 'flex';
-  document.querySelector('header').style.display = 'none';
+  (async function init() {
+    // Force a session refresh to get a valid token before loading data
+    const { data: { session } } = await supa.auth.getSession();
+    if (session && session.user) {
+      // Explicitly refresh the token in case it expired while idle
+      const { data: refreshed, error: refreshError } = await supa.auth.refreshSession();
+      if (refreshError || !refreshed.session) {
+        // Token couldn't be refreshed — session is truly expired, show login
+        document.getElementById('loginScreen').style.display = 'flex';
+        document.querySelector('header').style.display = 'none';
+        return;
+      }
+      currentUser = refreshed.session.user;
+      hideLoginScreen();
+      await migrateLocalToSupabase();
+      await loadFromSupabase();
+      render();
+      checkUrlParam();
+    } else {
+      document.getElementById('loginScreen').style.display = 'flex';
+      document.querySelector('header').style.display = 'none';
+    }
+  })();
 </script>
 </body>
 </html>
