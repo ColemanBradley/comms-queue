@@ -826,7 +826,7 @@
     switchView('list');
   }
 
-  // ── Auth state listener ──
+  // ── Auth state listener — handles sign in/out events only ──
   supa.auth.onAuthStateChange(async (event, session) => {
     console.log('[Auth]', event, session?.user?.email);
 
@@ -838,20 +838,19 @@
       return;
     }
 
-    if (session && session.user) {
-      // Only proceed if we have a real valid session
+    if (event === 'SIGNED_IN' && session && session.user) {
       currentUser = session.user;
       hideLoginScreen();
       await migrateLocalToSupabase();
       await loadFromSupabase();
       render();
       checkUrlParam();
-    } else {
-      // No valid session — show login
-      currentUser = null;
-      tasks = [];
-      render();
-      showLoginScreen();
+      return;
+    }
+
+    // TOKEN_REFRESHED — update user but don't reload data
+    if (event === 'TOKEN_REFRESHED' && session && session.user) {
+      currentUser = session.user;
     }
   });
 
@@ -1835,14 +1834,14 @@
   // ══════════════════════════════
   // INIT — check for existing session first
   // ══════════════════════════════
-  (async function init() {
-    // Force a session refresh to get a valid token before loading data
+  // ══════════════════════════════
+  // INIT — wait for Supabase to fully initialize before checking session
+  // ══════════════════════════════
+  setTimeout(async function init() {
     const { data: { session } } = await supa.auth.getSession();
     if (session && session.user) {
-      // Explicitly refresh the token in case it expired while idle
       const { data: refreshed, error: refreshError } = await supa.auth.refreshSession();
       if (refreshError || !refreshed.session) {
-        // Token couldn't be refreshed — session is truly expired, show login
         document.getElementById('loginScreen').style.display = 'flex';
         document.querySelector('header').style.display = 'none';
         return;
@@ -1857,7 +1856,7 @@
       document.getElementById('loginScreen').style.display = 'flex';
       document.querySelector('header').style.display = 'none';
     }
-  })();
+  }, 100);
 </script>
 </body>
 </html>
