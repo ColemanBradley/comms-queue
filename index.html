@@ -807,7 +807,11 @@
   function hideLoginScreen() {
     document.getElementById('loginScreen').style.display = 'none';
     document.querySelector('header').style.display = '';
-    document.getElementById('listView').style.display = '';
+    // Reset view state cleanly
+    const now = new Date();
+    calYear  = now.getFullYear();
+    calMonth = now.getMonth();
+    switchView('list');
   }
 
   // ── Auth state listener ──
