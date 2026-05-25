@@ -6,7 +6,11 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Comms Queue</title>
+<meta name="theme-color" content="#F7F3EE">
+<link rel="manifest" href="/manifest.json">
+<link rel="apple-touch-icon" href="/icon-192.png">
 <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
   :root {
     --cream: #F7F3EE;
@@ -433,6 +437,19 @@
 
 <div class="toast" id="toast"></div>
 
+<!-- ══ LOGIN SCREEN ══ -->
+<div id="loginScreen" style="display:none;position:fixed;inset:0;background:var(--cream);z-index:2000;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px 24px;">
+  <h1 style="font-family:'DM Serif Display',serif;font-size:32px;letter-spacing:-0.5px;margin-bottom:6px;">Comms <span style="font-style:italic;color:#DC2626;">Queue</span></h1>
+  <p style="font-size:13px;color:var(--ink-faint);margin-bottom:40px;">Sign in to sync your tasks</p>
+  <div style="width:100%;max-width:360px;display:flex;flex-direction:column;gap:12px;">
+    <input type="email" id="loginEmail" placeholder="Email address" style="width:100%;padding:14px 16px;border:1.5px solid #E7E5E4;border-radius:12px;font-family:'DM Sans',sans-serif;font-size:15px;color:var(--ink);background:white;outline:none;-webkit-appearance:none;">
+    <input type="password" id="loginPassword" placeholder="Password" style="width:100%;padding:14px 16px;border:1.5px solid #E7E5E4;border-radius:12px;font-family:'DM Sans',sans-serif;font-size:15px;color:var(--ink);background:white;outline:none;-webkit-appearance:none;">
+    <button onclick="handleSignIn()" style="width:100%;padding:14px;border-radius:12px;border:none;background:#1C1917;font-family:'DM Sans',sans-serif;font-size:15px;font-weight:600;color:white;cursor:pointer;margin-top:4px;">Sign In</button>
+    <button onclick="handleSignUp()" style="width:100%;padding:14px;border-radius:12px;border:1.5px solid #E7E5E4;background:white;font-family:'DM Sans',sans-serif;font-size:15px;font-weight:500;color:var(--ink-light);cursor:pointer;">Create Account</button>
+    <p id="loginError" style="font-size:13px;color:#DC2626;text-align:center;min-height:18px;"></p>
+  </div>
+</div>
+
 <header>
   <div class="header-row">
     <h1 class="header-title">Comms <span>Queue</span></h1>
@@ -598,12 +615,35 @@
       <div class="menu-item-arrow">›</div>
     </div>
     <div class="menu-divider"></div>
+    <div class="menu-item" onclick="exportTasks()">
+      <div class="menu-item-icon">
+        <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M9 2v9M5 7l4 4 4-4M3 13v2a1 1 0 001 1h10a1 1 0 001-1v-2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+      <div class="menu-item-label">Export Backup</div>
+      <div class="menu-item-arrow">›</div>
+    </div>
+    <div class="menu-item" onclick="document.getElementById('importInput').click()">
+      <div class="menu-item-icon">
+        <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M9 13V4M5 9l4-4 4 4M3 13v2a1 1 0 001 1h10a1 1 0 001-1v-2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+      <div class="menu-item-label">Import Backup</div>
+      <div class="menu-item-arrow">›</div>
+    </div>
+    <input type="file" id="importInput" accept=".json" style="display:none" onchange="importTasks(event)">
+    <div class="menu-divider"></div>
     <div class="menu-item" onclick="toggleDarkFromMenu()">
       <div class="menu-item-icon">
         <svg id="menuModeIcon" width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M9 1v2M9 15v2M1 9h2M15 9h2M3.22 3.22l1.42 1.42M13.36 13.36l1.42 1.42M3.22 14.78l1.42-1.42M13.36 4.64l1.42-1.42M9 5.5a3.5 3.5 0 100 7 3.5 3.5 0 000-7z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
       </div>
       <div class="menu-item-label" id="menuModeLabel">Dark Mode</div>
       <div class="menu-item-toggle" id="menuModeToggle"></div>
+    </div>
+    <div class="menu-divider"></div>
+    <div class="menu-item" onclick="handleSignOut()">
+      <div class="menu-item-icon">
+        <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M7 3H3a1 1 0 00-1 1v10a1 1 0 001 1h4M12 13l4-4-4-4M16 9H7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+      <div class="menu-item-label" style="color:#DC2626">Sign Out</div>
     </div>
   </div>
 </div>
@@ -720,58 +760,219 @@
     });
   })();
 
-  // ── Schema versioning & migration ──
-  const SCHEMA_VERSION = 2;
-  function migrate(taskList, fromVersion) {
-    let t = taskList.map(task => Object.assign({}, task));
-    if (fromVersion < 2) {
-      t = t.map(task => {
-        if (task.bucket === 'sunday') task.bucket = 'thisweek';
-        if (task.bucket === 'week')   task.bucket = 'nextweek';
-        return task;
-      });
-    }
-    return t;
+  // ══════════════════════════════
+  // SUPABASE
+  // ══════════════════════════════
+  const SUPA_URL = 'https://mqdipnnwgbjzxfvbkoqi.supabase.co';
+  const SUPA_KEY = 'sb_publishable_a2FOGkNydWuDQRwNmHJfxw_62AWJA7h';
+  const supa = supabase.createClient(SUPA_URL, SUPA_KEY);
+  let currentUser = null;
+
+  // ── Auth ──
+  async function handleSignIn() {
+    const email    = document.getElementById('loginEmail').value.trim();
+    const password = document.getElementById('loginPassword').value;
+    document.getElementById('loginError').textContent = '';
+    const { error } = await supa.auth.signInWithPassword({ email, password });
+    if (error) { document.getElementById('loginError').textContent = error.message; return; }
   }
-  function loadAndMigrate() {
-    const raw     = localStorage.getItem('commsTasks');
-    const version = parseInt(localStorage.getItem('commsTasksVersion') || '1', 10);
-    let taskList  = raw ? JSON.parse(raw) : [];
-    if (version < SCHEMA_VERSION) {
-      taskList = migrate(taskList, version);
-      localStorage.setItem('commsTasks', JSON.stringify(taskList));
-      localStorage.setItem('commsTasksVersion', String(SCHEMA_VERSION));
+
+  async function handleSignUp() {
+    const email    = document.getElementById('loginEmail').value.trim();
+    const password = document.getElementById('loginPassword').value;
+    document.getElementById('loginError').textContent = '';
+    if (password.length < 6) { document.getElementById('loginError').textContent = 'Password must be at least 6 characters.'; return; }
+    const { error } = await supa.auth.signUp({ email, password });
+    if (error) { document.getElementById('loginError').textContent = error.message; return; }
+    document.getElementById('loginError').style.color = '#16A34A';
+    document.getElementById('loginError').textContent = 'Account created! Check your email to confirm, then sign in.';
+  }
+
+  async function handleSignOut() {
+    closeMenu();
+    await supa.auth.signOut();
+    tasks = [];
+    render();
+    showLoginScreen();
+  }
+
+  function showLoginScreen() {
+    document.getElementById('loginScreen').style.display = 'flex';
+    document.querySelector('header').style.display = 'none';
+    document.getElementById('listView').style.display = 'none';
+    document.getElementById('calView').style.display = 'none';
+    document.getElementById('calFab').style.display = 'none';
+  }
+
+  function hideLoginScreen() {
+    document.getElementById('loginScreen').style.display = 'none';
+    document.querySelector('header').style.display = '';
+    document.getElementById('listView').style.display = '';
+  }
+
+  // ── Auth state listener ──
+  supa.auth.onAuthStateChange(async (event, session) => {
+    if (session) {
+      currentUser = session.user;
+      hideLoginScreen();
+      await migrateLocalToSupabase();
+      await loadFromSupabase();
+      render();
+      checkUrlParam();
+    } else {
+      currentUser = null;
+      showLoginScreen();
     }
-    // Silent 60-day cleanup — permanently delete old completed tasks
-    const sixtyDaysAgo = Date.now() - 60 * 24 * 60 * 60 * 1000;
-    const before = taskList.length;
-    taskList = taskList.filter(t =>
-      !t.done || !t.completedAt || new Date(t.completedAt).getTime() > sixtyDaysAgo
-    );
-    if (taskList.length !== before) {
-      localStorage.setItem('commsTasks', JSON.stringify(taskList));
+  });
+
+  // ── Schema version ──
+  const SCHEMA_VERSION = 2;
+
+  // ── Map between app fields and Supabase columns ──
+  function taskToRow(t) {
+    return {
+      id:           t.id,
+      text:         t.text,
+      bucket:       t.bucket,
+      source:       t.source   || null,
+      tag:          t.tag      || null,
+      due_date:     t.dueDate  || null,
+      notes:        t.notes    || null,
+      done:         t.done     || false,
+      completed_at: t.completedAt || null,
+      created:      t.created  || new Date().toISOString(),
+      user_id:      currentUser.id
+    };
+  }
+
+  function rowToTask(r) {
+    return {
+      id:          r.id,
+      text:        r.text,
+      bucket:      r.bucket,
+      source:      r.source      || null,
+      tag:         r.tag         || null,
+      dueDate:     r.due_date    || null,
+      notes:       r.notes       || null,
+      done:        r.done        || false,
+      completedAt: r.completed_at || null,
+      created:     r.created     || new Date().toISOString()
+    };
+  }
+
+  // ── Load from Supabase ──
+  async function loadFromSupabase() {
+    const { data, error } = await supa.from('tasks').select('*').eq('user_id', currentUser.id);
+    if (error) { console.error('Load error:', error); return; }
+    // 60-day cleanup
+    const sixtyDaysAgo = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString();
+    const stale = (data || []).filter(r => r.done && r.completed_at && r.completed_at < sixtyDaysAgo);
+    if (stale.length > 0) {
+      await supa.from('tasks').delete().in('id', stale.map(r => r.id));
     }
-    return taskList;
+    tasks = (data || []).filter(r => !stale.find(s => s.id === r.id)).map(rowToTask);
+  }
+
+  // ── Save a single task to Supabase (upsert) ──
+  async function saveTask(t) {
+    if (!currentUser) return;
+    const { error } = await supa.from('tasks').upsert(taskToRow(t));
+    if (error) console.error('Save error:', error);
+  }
+
+  // ── Delete a task from Supabase ──
+  async function deleteTaskFromDB(id) {
+    if (!currentUser) return;
+    const { error } = await supa.from('tasks').delete().eq('id', id).eq('user_id', currentUser.id);
+    if (error) console.error('Delete error:', error);
+  }
+
+  // ── Migrate existing localStorage tasks to Supabase (runs once) ──
+  async function migrateLocalToSupabase() {
+    const raw = localStorage.getItem('commsTasks');
+    if (!raw) return;
+    const migrationDone = localStorage.getItem('commsSupaMigrated');
+    if (migrationDone) return;
+
+    const localTasks = JSON.parse(raw);
+    if (localTasks.length === 0) {
+      localStorage.setItem('commsSupaMigrated', '1');
+      return;
+    }
+
+    showToast('Migrating your existing tasks...');
+    const rows = localTasks.map(t => ({ ...taskToRow(t), user_id: currentUser.id }));
+    const { error } = await supa.from('tasks').upsert(rows, { onConflict: 'id' });
+    if (!error) {
+      localStorage.setItem('commsSupaMigrated', '1');
+      localStorage.removeItem('commsTasks');
+      localStorage.removeItem('commsTasksVersion');
+      showToast(`Migrated ${localTasks.length} tasks to cloud`);
+    } else {
+      console.error('Migration error:', error);
+      showToast('Migration failed — your local data is safe');
+    }
+  }
+
+  // ── save() now upserts to Supabase — called after every change ──
+  function save(changedTask) {
+    if (changedTask) saveTask(changedTask);
   }
 
   // ── State ──
-  let tasks = loadAndMigrate();
+  let tasks        = [];
   let formState    = { urgency: null, source: null };
   let moveTargetId = null;
-  let editingTaskId = null;  // null = add mode, string = edit mode
+  let editingTaskId = null;
   let currentView  = 'list';
-  let calYear, calMonth; // currently displayed month
+  let calYear, calMonth;
   let dragTaskId   = null;
   let activeDayPanelDate = null;
 
-  function save() {
-    localStorage.setItem('commsTasks', JSON.stringify(tasks));
-    localStorage.setItem('commsTasksVersion', String(SCHEMA_VERSION));
+  document.addEventListener('visibilitychange', async () => {
+    if (document.visibilityState === 'visible' && currentUser) {
+      await loadFromSupabase();
+      render();
+    }
+  });
+
+  // ══════════════════════════════
+  // EXPORT / IMPORT
+  // ══════════════════════════════
+  function exportTasks() {
+    closeMenu();
+    const data = JSON.stringify({ version: 1, exported: new Date().toISOString(), tasks }, null, 2);
+    const blob = new Blob([data], { type: 'application/json' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = `comms-queue-backup-${todayStr()}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast('Backup downloaded');
   }
 
-  document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') { tasks = loadAndMigrate(); render(); }
-  });
+  async function importTasks(event) {
+    closeMenu();
+    const file = event.target.files[0];
+    if (!file) return;
+    const text = await file.text();
+    try {
+      const data = JSON.parse(text);
+      const imported = data.tasks || data; // support both formats
+      if (!Array.isArray(imported)) throw new Error('Invalid format');
+      // Upsert all imported tasks
+      const rows = imported.map(t => ({ ...taskToRow(t), user_id: currentUser.id }));
+      const { error } = await supa.from('tasks').upsert(rows, { onConflict: 'id' });
+      if (error) throw error;
+      await loadFromSupabase();
+      render();
+      showToast(`Imported ${imported.length} tasks`);
+    } catch(e) {
+      showToast('Import failed — invalid file');
+    }
+    event.target.value = '';
+  }
 
   // ── Date helpers ──
   function todayStr() { return new Date().toISOString().split('T')[0]; }
@@ -1009,7 +1210,7 @@
     if (!t) return;
     t.dueDate = dateStr;
     t.bucket  = bucketForDate(dateStr);
-    save(); render();
+    save(t); render();
     showToast('Due date set to ' + formatDue(dateStr));
     dragTaskId = null;
   }
@@ -1094,7 +1295,7 @@
       if (t && dateStr) {
         t.dueDate = dateStr;
         t.bucket  = bucketForDate(dateStr);
-        save(); render();
+        save(t); render();
         showToast('Due date set to ' + formatDue(dateStr));
       }
     }
@@ -1148,7 +1349,7 @@
     if (t) {
       t.done = !t.done;
       t.completedAt = t.done ? new Date().toISOString() : null;
-      save(); render(); if (activeDayPanelDate) renderDayPanel(activeDayPanelDate);
+      save(t); render(); if (activeDayPanelDate) renderDayPanel(activeDayPanelDate);
     }
   }
 
@@ -1188,7 +1389,7 @@
     if (t) {
       t.done = !t.done;
       t.completedAt = t.done ? new Date().toISOString() : null;
-      save(); render();
+      save(t); render();
     }
   }
 
@@ -1254,10 +1455,21 @@
     document.body.style.overflow = 'hidden';
     setTimeout(() => { const ta = document.getElementById('taskText'); ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }, 300);
   }
+  function deleteTask() {
+    const id = moveTargetId;
+    tasks = tasks.filter(t => t.id !== id);
+    deleteTaskFromDB(id);
+    render(); if (activeDayPanelDate) renderDayPanel(activeDayPanelDate);
+    document.getElementById('moveModal').classList.remove('open'); moveTargetId = null;
+    showToast('Task deleted');
+  }
+
   function deleteEditingTask() {
     if (!editingTaskId) return;
-    tasks = tasks.filter(t => t.id !== editingTaskId);
-    save(); render(); closeModal();
+    const id = editingTaskId;
+    tasks = tasks.filter(t => t.id !== id);
+    deleteTaskFromDB(id);
+    render(); closeModal();
     if (activeDayPanelDate) renderDayPanel(activeDayPanelDate);
     showToast('Task deleted');
   }
@@ -1333,7 +1545,6 @@
     const labels = { thisweek: 'This Week', nextweek: 'Next Week', parking: 'Parking Lot' };
 
     if (editingTaskId) {
-      // ── Edit existing task ──
       const t = tasks.find(t => t.id === editingTaskId);
       if (t) {
         t.text    = text;
@@ -1342,14 +1553,15 @@
         t.tag     = document.getElementById('taskTag').value.trim();
         t.dueDate = document.getElementById('taskDue').value || null;
         t.notes   = document.getElementById('taskNotes').value.trim() || null;
+        save(t);
       }
-      save(); render(); closeModal();
+      render(); closeModal();
       if (activeDayPanelDate) renderDayPanel(activeDayPanelDate);
       showToast('Task updated');
     } else {
-      // ── Add new task ──
-      tasks.unshift({ id: Date.now().toString(), text, bucket: formState.urgency, source: formState.source, tag: document.getElementById('taskTag').value.trim(), dueDate: document.getElementById('taskDue').value || null, notes: document.getElementById('taskNotes').value.trim() || null, done: false, created: new Date().toISOString() });
-      save(); render(); closeModal();
+      const newTask = { id: Date.now().toString(), text, bucket: formState.urgency, source: formState.source, tag: document.getElementById('taskTag').value.trim(), dueDate: document.getElementById('taskDue').value || null, notes: document.getElementById('taskNotes').value.trim() || null, done: false, completedAt: null, created: new Date().toISOString() };
+      tasks.unshift(newTask);
+      save(newTask); render(); closeModal();
       document.getElementById('body-'    + formState.urgency).classList.add('open');
       document.getElementById('chevron-' + formState.urgency).classList.add('open');
       if (activeDayPanelDate) renderDayPanel(activeDayPanelDate);
@@ -1379,7 +1591,7 @@
     if (t) {
       t.dueDate = date;
       t.bucket  = bucketForDate(date);
-      save(); render();
+      save(t); render();
       showToast('Due date set to ' + formatDue(date));
     }
     document.getElementById('moveModal').classList.remove('open');
@@ -1388,14 +1600,8 @@
   function closeMoveModal(e) { if (e.target === document.getElementById('moveModal')) { document.getElementById('moveModal').classList.remove('open'); moveTargetId = null; } }
   function moveTask(bucket) {
     const t = tasks.find(t => t.id === moveTargetId);
-    if (t) { t.bucket = bucket; t.done = false; save(); render(); if (activeDayPanelDate) renderDayPanel(activeDayPanelDate); }
+    if (t) { t.bucket = bucket; t.done = false; t.completedAt = null; save(t); render(); if (activeDayPanelDate) renderDayPanel(activeDayPanelDate); }
     document.getElementById('moveModal').classList.remove('open'); moveTargetId = null;
-  }
-  function deleteTask() {
-    tasks = tasks.filter(t => t.id !== moveTargetId);
-    save(); render(); if (activeDayPanelDate) renderDayPanel(activeDayPanelDate);
-    document.getElementById('moveModal').classList.remove('open'); moveTargetId = null;
-    showToast('Task deleted');
   }
 
   // ══════════════════════════════
@@ -1551,10 +1757,11 @@
   function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
   // ══════════════════════════════
-  // INIT
+  // INIT — auth listener drives startup
   // ══════════════════════════════
-  render();
-  checkUrlParam();
+  // Show login screen immediately while auth state is determined
+  document.getElementById('loginScreen').style.display = 'flex';
+  document.querySelector('header').style.display = 'none';
 </script>
 </body>
 </html>
