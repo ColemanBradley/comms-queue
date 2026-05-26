@@ -827,6 +827,7 @@
     console.log('[Auth]', event, session?.user?.email);
 
     if (event === 'SIGNED_OUT') {
+      initHandled = false;
       currentUser = null;
       tasks = [];
       render();
@@ -834,9 +835,10 @@
       return;
     }
 
-    if (event === 'SIGNED_IN' && session && session.user) {
+    if (event === 'SIGNED_IN' && session?.user) {
       localStorage.setItem('cqUserId', session.user.id);
       currentUser = session.user;
+      initHandled = true;
       hideLoginScreen();
       await migrateLocalToSupabase();
       await loadFromSupabase();
@@ -845,9 +847,8 @@
       return;
     }
 
-    // TOKEN_REFRESHED — update user but don't reload data
-    if (event === 'TOKEN_REFRESHED' && session && session.user) {
-      currentUser = session.user;
+    if (event === 'TOKEN_REFRESHED' && session?.user) {
+      currentUser = session.user; // always update with fresh JWT
     }
   });
 
@@ -1845,16 +1846,18 @@
   function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
   // ══════════════════════════════
-  // INIT — check for existing session first
+  // INIT
   // ══════════════════════════════
-  // ══════════════════════════════
-  // INIT — load cache instantly, hydrate from Supabase in background
-  // ══════════════════════════════
+  let initHandled = false;
+
   setTimeout(async function init() {
+    // If auth listener already handled sign-in, skip
+    if (initHandled) return;
+
     const storedUserId = localStorage.getItem('cqUserId');
 
     if (storedUserId) {
-      // Load from cache immediately — no flash, no wait
+      // Step 1 — show cache instantly, no flash
       const cached = readCache();
       if (cached && cached.length > 0) {
         tasks = cached;
@@ -1864,32 +1867,33 @@
         hideLoginScreen();
       }
 
-      // Then hydrate from Supabase in the background
-      let userId = storedUserId;
+      // Step 2 — get a real valid session (never use minimal fallback)
       try {
-        const { data: { session } } = await supa.auth.getSession();
-        if (session?.user) {
-          userId = session.user.id;
-          currentUser = session.user;
+        const { data: sessionData } = await supa.auth.getSession();
+        if (sessionData?.session?.user) {
+          currentUser = sessionData.session.user;
         } else {
           const { data: refreshed } = await supa.auth.refreshSession();
           if (refreshed?.session?.user) {
-            userId = refreshed.session.user.id;
             currentUser = refreshed.session.user;
           } else {
-            currentUser = { id: userId };
+            // Truly can't get a session — stay on cache, don't load from Supabase
+            console.log('[Init] No valid session — running on cache only');
+            return;
           }
         }
       } catch(e) {
-        currentUser = { id: userId };
+        console.error('[Init] Session error:', e);
+        return;
       }
 
+      // Step 3 — hydrate from Supabase now that we have a valid session
+      initHandled = true;
       await migrateLocalToSupabase();
       await loadFromSupabase();
       render();
       checkUrlParam();
     } else {
-      // No stored user — show login
       document.getElementById('loginScreen').style.display = 'flex';
       document.querySelector('header').style.display = 'none';
     }
