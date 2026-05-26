@@ -871,7 +871,7 @@
     switchView('list');
   }
 
-  // ── Auth state listener — handles sign in/out events only ──
+  // ── Auth state listener — central handler for all auth events ──
   supa.auth.onAuthStateChange(async (event, session) => {
     console.log('[Auth]', event, session?.user?.email);
 
@@ -885,19 +885,34 @@
     }
 
     if (event === 'SIGNED_IN' && session?.user) {
-      localStorage.setItem('cqUserId', session.user.id);
       currentUser = session.user;
-      initHandled = true;
-      hideLoginScreen();
-      await migrateLocalToSupabase();
-      await loadFromSupabase();
-      render();
-      checkUrlParam();
+      localStorage.setItem('cqUserId', session.user.id);
+
+      // Save credentials if this came from manual login form
+      const loginVisible = document.getElementById('loginScreen').style.display === 'flex';
+      if (loginVisible) {
+        const email    = document.getElementById('loginEmail').value.trim();
+        const password = document.getElementById('loginPassword').value;
+        if (email && password) saveCredentials(email, password);
+      }
+
+      if (!initHandled) {
+        initHandled = true;
+        hideLoginScreen();
+        await migrateLocalToSupabase();
+        await loadFromSupabase();
+        render();
+        checkUrlParam();
+      } else {
+        // Already showing app — refresh data with new valid session
+        await loadFromSupabase();
+        render();
+      }
       return;
     }
 
     if (event === 'TOKEN_REFRESHED' && session?.user) {
-      currentUser = session.user; // always update with fresh JWT
+      currentUser = session.user;
     }
   });
 
@@ -1903,15 +1918,14 @@
   function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
   // ══════════════════════════════
-  // INIT — silent re-auth on every cold start
+  // INIT — show cache instantly, fire silent re-auth without awaiting
+  // Auth listener handles the SIGNED_IN result
   // ══════════════════════════════
   let initHandled = false;
 
-  setTimeout(async function init() {
-    if (initHandled) return;
-
+  setTimeout(function init() {
     const storedUserId = localStorage.getItem('cqUserId');
-    const creds = loadCredentials();
+    const creds        = loadCredentials();
 
     if (storedUserId && creds) {
       // Show cache instantly
@@ -1924,46 +1938,16 @@
         hideLoginScreen();
       }
 
-      // Silently re-authenticate with stored credentials
-      // This gives us a fresh valid session every single time
-      try {
-        const { data, error } = await supa.auth.signInWithPassword({
-          email: creds.email,
-          password: creds.password
-        });
+      // Fire sign-in WITHOUT awaiting
+      // Auth listener above handles SIGNED_IN and loads fresh data
+      supa.auth.signInWithPassword({
+        email:    creds.email,
+        password: creds.password
+      }).catch(e => console.error('[Init] Silent re-auth error:', e));
 
-        if (error || !data?.user) {
-          // Credentials no longer valid — show login
-          console.log('[Init] Silent re-auth failed:', error?.message);
-          clearCredentials();
-          localStorage.removeItem('cqUserId');
-          tasks = [];
-          render();
-          showLoginScreen();
-          return;
-        }
-
-        currentUser = data.user;
-        initHandled = true;
-        await migrateLocalToSupabase();
-        await loadFromSupabase();
-        render();
-        checkUrlParam();
-
-      } catch(e) {
-        console.error('[Init] Re-auth error:', e);
-        // Network error — stay on cache
-      }
-
-    } else if (storedUserId && !creds) {
-      // Has user ID but no credentials (old session) — show login to re-enter password
-      localStorage.removeItem('cqUserId');
-      document.getElementById('loginScreen').style.display = 'flex';
-      document.querySelector('header').style.display = 'none';
     } else {
-      // No stored user — show login
       document.getElementById('loginScreen').style.display = 'flex';
-      document.querySelector('header').style.display = 'none';
+      document.querySelector('header').style.display       = 'none';
     }
   }, 100);
 </script>
