@@ -1,6 +1,5 @@
 // Comms Queue Service Worker — v3
-// v3: Never cache index.html — always fetch fresh from network
-// Only cache static assets (icons, fonts, manifest)
+// Never caches index.html — always fetches fresh from network
 
 const CACHE_NAME = 'comms-queue-v3';
 const STATIC_ASSETS = [
@@ -9,7 +8,6 @@ const STATIC_ASSETS = [
   '/icon-512.png'
 ];
 
-// ── Install ──
 self.addEventListener('install', event => {
   self.skipWaiting();
   event.waitUntil(
@@ -17,7 +15,6 @@ self.addEventListener('install', event => {
   );
 });
 
-// ── Activate: delete all old caches ──
 self.addEventListener('activate', event => {
   event.waitUntil(
     caches.keys()
@@ -28,26 +25,21 @@ self.addEventListener('activate', event => {
   );
 });
 
-// ── Fetch ──
 self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
   if (event.request.method !== 'GET') return;
 
-  // NEVER cache index.html or root — always go to network
-  // This ensures the latest code is always served
+  // Never cache index.html
   if (url.pathname === '/' || url.pathname === '/index.html' || url.pathname === '') {
     event.respondWith(
-      fetch(event.request).catch(() => {
-        // Offline fallback — serve cached version if available
-        return caches.match('/index.html') || caches.match('/');
-      })
+      fetch(event.request).catch(() => caches.match('/index.html'))
     );
     return;
   }
 
-  // Static assets — cache first
-  if (url.origin === self.location.origin || 
-      url.hostname === 'fonts.googleapis.com' || 
+  // Cache static assets
+  if (url.origin === self.location.origin ||
+      url.hostname === 'fonts.googleapis.com' ||
       url.hostname === 'fonts.gstatic.com' ||
       url.hostname === 'cdn.jsdelivr.net') {
     event.respondWith(
@@ -65,7 +57,6 @@ self.addEventListener('fetch', event => {
   }
 });
 
-// ── Allow app to trigger update ──
 self.addEventListener('message', event => {
   if (event.data === 'SKIP_WAITING') self.skipWaiting();
 });
