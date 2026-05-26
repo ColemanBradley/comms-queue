@@ -11,6 +11,17 @@
 <link rel="apple-touch-icon" href="/icon-192.png">
 <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+  // Unregister all service workers — they were causing stale cache issues
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.getRegistrations().then(regs => {
+      regs.forEach(reg => {
+        reg.unregister();
+        console.log('[SW] Unregistered:', reg.scope);
+      });
+    });
+  }
+</script>
 <style>
   :root {
     --cream: #F7F3EE;
@@ -771,13 +782,52 @@
   const supa = supabase.createClient(SUPA_URL, SUPA_KEY);
   let currentUser = null;
 
+  // ── Simple obfuscation for stored credentials ──
+  const CRED_KEY = 'cqAuth';
+  const CRED_SALT = 'cq_2024_grace_monroe';
+
+  function obfuscate(str) {
+    return btoa(str.split('').map((c, i) =>
+      String.fromCharCode(c.charCodeAt(0) ^ CRED_SALT.charCodeAt(i % CRED_SALT.length))
+    ).join(''));
+  }
+
+  function deobfuscate(str) {
+    try {
+      const decoded = atob(str);
+      return decoded.split('').map((c, i) =>
+        String.fromCharCode(c.charCodeAt(0) ^ CRED_SALT.charCodeAt(i % CRED_SALT.length))
+      ).join('');
+    } catch(e) { return null; }
+  }
+
+  function saveCredentials(email, password) {
+    localStorage.setItem(CRED_KEY, obfuscate(JSON.stringify({ email, password })));
+  }
+
+  function loadCredentials() {
+    const raw = localStorage.getItem(CRED_KEY);
+    if (!raw) return null;
+    const json = deobfuscate(raw);
+    if (!json) return null;
+    try { return JSON.parse(json); } catch(e) { return null; }
+  }
+
+  function clearCredentials() {
+    localStorage.removeItem(CRED_KEY);
+  }
+
   // ── Auth ──
   async function handleSignIn() {
     const email    = document.getElementById('loginEmail').value.trim();
     const password = document.getElementById('loginPassword').value;
     document.getElementById('loginError').textContent = '';
-    const { error } = await supa.auth.signInWithPassword({ email, password });
+    const { data, error } = await supa.auth.signInWithPassword({ email, password });
     if (error) { document.getElementById('loginError').textContent = error.message; return; }
+    if (data?.user) {
+      localStorage.setItem('cqUserId', data.user.id);
+      saveCredentials(email, password);
+    }
   }
 
   async function handleSignUp() {
@@ -785,15 +835,27 @@
     const password = document.getElementById('loginPassword').value;
     document.getElementById('loginError').textContent = '';
     if (password.length < 6) { document.getElementById('loginError').textContent = 'Password must be at least 6 characters.'; return; }
-    const { error } = await supa.auth.signUp({ email, password });
+    const { data, error } = await supa.auth.signUp({ email, password });
     if (error) { document.getElementById('loginError').textContent = error.message; return; }
+    if (data?.user) {
+      localStorage.setItem('cqUserId', data.user.id);
+      saveCredentials(email, password);
+    }
     document.getElementById('loginError').style.color = '#16A34A';
     document.getElementById('loginError').textContent = 'Account created! Check your email to confirm, then sign in.';
   }
 
   async function handleSignOut() {
     closeMenu();
-    await supa.auth.signOut();
+    try { await supa.auth.signOut({ scope: 'local' }); } catch(e) {}
+    Object.keys(localStorage)
+      .filter(k => k.startsWith('sb-') || k.includes('supabase') || k === 'cqUserId' || k === CACHE_KEY || k === CRED_KEY)
+      .forEach(k => localStorage.removeItem(k));
+    clearCredentials();
+    currentUser = null;
+    tasks = [];
+    render();
+    showLoginScreen();
   }
 
   function showLoginScreen() {
@@ -813,20 +875,33 @@
     switchView('list');
   }
 
-  // ── Auth state listener ──
+  // ── Auth state listener — handles sign in/out events only ──
   supa.auth.onAuthStateChange(async (event, session) => {
-    if (session) {
+    console.log('[Auth]', event, session?.user?.email);
+
+    if (event === 'SIGNED_OUT') {
+      initHandled = false;
+      currentUser = null;
+      tasks = [];
+      render();
+      showLoginScreen();
+      return;
+    }
+
+    if (event === 'SIGNED_IN' && session?.user) {
+      localStorage.setItem('cqUserId', session.user.id);
       currentUser = session.user;
+      initHandled = true;
       hideLoginScreen();
       await migrateLocalToSupabase();
       await loadFromSupabase();
       render();
       checkUrlParam();
-    } else {
-      currentUser = null;
-      tasks = [];
-      render();
-      showLoginScreen();
+      return;
+    }
+
+    if (event === 'TOKEN_REFRESHED' && session?.user) {
+      currentUser = session.user; // always update with fresh JWT
     }
   });
 
@@ -865,17 +940,52 @@
     };
   }
 
-  // ── Load from Supabase ──
   async function loadFromSupabase() {
-    const { data, error } = await supa.from('tasks').select('*').eq('user_id', currentUser.id);
+    if (!currentUser?.id) return;
+
+    let { data, error } = await supa.from('tasks').select('*').eq('user_id', currentUser.id);
+
+    // If auth error, try refreshing session once and retry
+    if (error && (error.code === 'PGRST301' || error.message?.includes('JWT'))) {
+      const { data: refreshed } = await supa.auth.refreshSession();
+      if (refreshed?.session) {
+        currentUser = refreshed.session.user;
+        const retry = await supa.from('tasks').select('*').eq('user_id', currentUser.id);
+        data  = retry.data;
+        error = retry.error;
+      }
+    }
+
     if (error) { console.error('Load error:', error); return; }
+
+    // CRITICAL: only update tasks if Supabase returned actual data
+    // Never overwrite a good cache with an empty result
+    if (!data || data.length === 0) {
+      console.log('[Load] Supabase returned empty — keeping existing tasks');
+      return;
+    }
+
     // 60-day cleanup
     const sixtyDaysAgo = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString();
-    const stale = (data || []).filter(r => r.done && r.completed_at && r.completed_at < sixtyDaysAgo);
+    const stale = data.filter(r => r.done && r.completed_at && r.completed_at < sixtyDaysAgo);
     if (stale.length > 0) {
       await supa.from('tasks').delete().in('id', stale.map(r => r.id));
     }
-    tasks = (data || []).filter(r => !stale.find(s => s.id === r.id)).map(rowToTask);
+    tasks = data.filter(r => !stale.find(s => s.id === r.id)).map(rowToTask);
+    writeCache();
+  }
+
+  const CACHE_KEY = 'cqTaskCache';
+
+  function writeCache() {
+    try { localStorage.setItem(CACHE_KEY, JSON.stringify(tasks)); } catch(e) {}
+  }
+
+  function readCache() {
+    try {
+      const raw = localStorage.getItem(CACHE_KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch(e) { return null; }
   }
 
   // ── Save a single task to Supabase (upsert) ──
@@ -883,6 +993,7 @@
     if (!currentUser) return;
     const { error } = await supa.from('tasks').upsert(taskToRow(t));
     if (error) console.error('Save error:', error);
+    writeCache();
   }
 
   // ── Delete a task from Supabase ──
@@ -890,6 +1001,7 @@
     if (!currentUser) return;
     const { error } = await supa.from('tasks').delete().eq('id', id).eq('user_id', currentUser.id);
     if (error) console.error('Delete error:', error);
+    writeCache();
   }
 
   // ── Show force-migrate button if local data exists ──
@@ -1795,11 +1907,69 @@
   function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
   // ══════════════════════════════
-  // INIT — auth listener drives startup
+  // INIT — silent re-auth on every cold start
   // ══════════════════════════════
-  // Show login screen immediately while auth state is determined
-  document.getElementById('loginScreen').style.display = 'flex';
-  document.querySelector('header').style.display = 'none';
+  let initHandled = false;
+
+  setTimeout(async function init() {
+    if (initHandled) return;
+
+    const storedUserId = localStorage.getItem('cqUserId');
+    const creds = loadCredentials();
+
+    if (storedUserId && creds) {
+      // Show cache instantly
+      const cached = readCache();
+      if (cached && cached.length > 0) {
+        tasks = cached;
+        hideLoginScreen();
+        render();
+      } else {
+        hideLoginScreen();
+      }
+
+      // Silently re-authenticate with stored credentials
+      // This gives us a fresh valid session every single time
+      try {
+        const { data, error } = await supa.auth.signInWithPassword({
+          email: creds.email,
+          password: creds.password
+        });
+
+        if (error || !data?.user) {
+          // Credentials no longer valid — show login
+          console.log('[Init] Silent re-auth failed:', error?.message);
+          clearCredentials();
+          localStorage.removeItem('cqUserId');
+          tasks = [];
+          render();
+          showLoginScreen();
+          return;
+        }
+
+        currentUser = data.user;
+        initHandled = true;
+        await migrateLocalToSupabase();
+        await loadFromSupabase();
+        render();
+        checkUrlParam();
+
+      } catch(e) {
+        console.error('[Init] Re-auth error:', e);
+        // Network error — stay on cache
+      }
+
+    } else if (storedUserId && !creds) {
+      // Has user ID but no credentials (old session) — show login to re-enter password
+      localStorage.removeItem('cqUserId');
+      document.getElementById('loginScreen').style.display = 'flex';
+      document.querySelector('header').style.display = 'none';
+    } else {
+      // No stored user — show login
+      document.getElementById('loginScreen').style.display = 'flex';
+      document.querySelector('header').style.display = 'none';
+    }
+  }, 100);
 </script>
 </body>
 </html>
