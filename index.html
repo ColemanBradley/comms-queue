@@ -887,12 +887,11 @@
     };
   }
 
+  // ── Load from Supabase ──
   async function loadFromSupabase() {
-    if (!currentUser?.id) return;
-
     let { data, error } = await supa.from('tasks').select('*').eq('user_id', currentUser.id);
-
-    // If auth error, try refreshing session once and retry
+    
+    // If we get an auth error, try refreshing the session once and retry
     if (error && (error.code === 'PGRST301' || error.message?.includes('JWT'))) {
       const { data: refreshed } = await supa.auth.refreshSession();
       if (refreshed?.session) {
@@ -904,21 +903,14 @@
     }
 
     if (error) { console.error('Load error:', error); return; }
-
-    // CRITICAL: only update tasks if Supabase returned actual data
-    // Never overwrite a good cache with an empty result
-    if (!data || data.length === 0) {
-      console.log('[Load] Supabase returned empty — keeping existing tasks');
-      return;
-    }
-
+    
     // 60-day cleanup
     const sixtyDaysAgo = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString();
-    const stale = data.filter(r => r.done && r.completed_at && r.completed_at < sixtyDaysAgo);
+    const stale = (data || []).filter(r => r.done && r.completed_at && r.completed_at < sixtyDaysAgo);
     if (stale.length > 0) {
       await supa.from('tasks').delete().in('id', stale.map(r => r.id));
     }
-    tasks = data.filter(r => !stale.find(s => s.id === r.id)).map(rowToTask);
+    tasks = (data || []).filter(r => !stale.find(s => s.id === r.id)).map(rowToTask);
     writeCache();
   }
 
