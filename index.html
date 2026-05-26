@@ -890,7 +890,7 @@
       localStorage.setItem('cqUserId', session.user.id);
 
       // Save credentials if this came from manual login form
-      const loginVisible = document.getElementById('loginScreen').style.display === 'flex';
+      const loginVisible = document.getElementById('loginScreen').style.display !== 'none';
       if (loginVisible) {
         const email    = document.getElementById('loginEmail').value.trim();
         const password = document.getElementById('loginPassword').value;
