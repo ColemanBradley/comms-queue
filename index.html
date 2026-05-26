@@ -732,10 +732,6 @@
   const APP_URL = window.location.href.split('?')[0];
   document.getElementById('shortcutUrl').textContent = APP_URL + '?task=';
 
-  // ── Check signed-out flag immediately — before anything else runs ──
-  // This prevents silent re-auth from overriding a deliberate sign out
-  const _wasSignedOut = localStorage.getItem('cqSignedOut') === '1';
-
   // ══════════════════════════════
   // DARK MODE
   // ══════════════════════════════
@@ -1934,8 +1930,9 @@
   setTimeout(function init() {
     const storedUserId = localStorage.getItem('cqUserId');
     const creds        = loadCredentials();
+    const signedOut    = localStorage.getItem('cqSignedOut');
 
-    if (_wasSignedOut) {
+    if (signedOut) {
       // User explicitly signed out — show login, don't auto re-auth
       document.getElementById('loginScreen').style.display = 'flex';
       document.querySelector('header').style.display       = 'none';
