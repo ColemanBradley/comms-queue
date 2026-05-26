@@ -12,13 +12,9 @@
 <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
-  // Unregister all service workers — they were causing stale cache issues
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.getRegistrations().then(regs => {
-      regs.forEach(reg => {
-        reg.unregister();
-        console.log('[SW] Unregistered:', reg.scope);
-      });
+    navigator.serviceWorker.register('/sw.js').catch(err => {
+      console.log('[SW] Registration failed:', err);
     });
   }
 </script>
