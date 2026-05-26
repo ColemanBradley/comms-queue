@@ -732,6 +732,9 @@
   const APP_URL = window.location.href.split('?')[0];
   document.getElementById('shortcutUrl').textContent = APP_URL + '?task=';
 
+  // ── Check signed-out flag immediately — before anything else runs ──
+  const _wasSignedOut = false; // sign out not implemented — always auto sign in
+
   // ══════════════════════════════
   // DARK MODE
   // ══════════════════════════════
@@ -843,7 +846,6 @@
 
   async function handleSignOut() {
     closeMenu();
-    localStorage.setItem('cqSignedOut', '1');
     try { await supa.auth.signOut({ scope: 'local' }); } catch(e) {}
     Object.keys(localStorage)
       .filter(k => k.startsWith('sb-') || k.includes('supabase') || k === 'cqUserId' || k === CACHE_KEY || k === CRED_KEY)
@@ -872,47 +874,30 @@
     switchView('list');
   }
 
-  // ── Auth state listener — central handler for all auth events ──
+  // ── Auth state listener ──
   supa.auth.onAuthStateChange(async (event, session) => {
     console.log('[Auth]', event, session?.user?.email);
-
-    if (event === 'SIGNED_OUT') {
-      initHandled = false;
-      currentUser = null;
-      tasks = [];
-      render();
-      showLoginScreen();
-      return;
-    }
 
     if (event === 'SIGNED_IN' && session?.user) {
       currentUser = session.user;
       localStorage.setItem('cqUserId', session.user.id);
 
-      // Save credentials if this came from manual login form
       const loginVisible = document.getElementById('loginScreen').style.display !== 'none';
       if (loginVisible) {
         const email    = document.getElementById('loginEmail').value.trim();
         const password = document.getElementById('loginPassword').value;
-        if (email && password) {
-          saveCredentials(email, password);
-          localStorage.removeItem('cqSignedOut');
-        }
+        if (email && password) saveCredentials(email, password);
+        hideLoginScreen();
       }
 
       if (!initHandled) {
         initHandled = true;
-        hideLoginScreen();
-        await migrateLocalToSupabase();
-        await loadFromSupabase();
-        render();
+        if (!loginVisible) hideLoginScreen();
+        migrateLocalToSupabase().then(() => loadFromSupabase()).then(() => render());
         checkUrlParam();
       } else {
-        // Already showing app — refresh data with new valid session
-        await loadFromSupabase();
-        render();
+        loadFromSupabase().then(() => render());
       }
-      return;
     }
 
     if (event === 'TOKEN_REFRESHED' && session?.user) {
@@ -1922,25 +1907,15 @@
   function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
   // ══════════════════════════════
-  // INIT — show cache instantly, fire silent re-auth without awaiting
-  // Auth listener handles the SIGNED_IN result
+  // INIT
   // ══════════════════════════════
   let initHandled = false;
 
   setTimeout(function init() {
     const storedUserId = localStorage.getItem('cqUserId');
     const creds        = loadCredentials();
-    const signedOut    = localStorage.getItem('cqSignedOut');
-
-    if (signedOut) {
-      // User explicitly signed out — show login, don't auto re-auth
-      document.getElementById('loginScreen').style.display = 'flex';
-      document.querySelector('header').style.display       = 'none';
-      return;
-    }
 
     if (storedUserId && creds) {
-      // Show cache instantly
       const cached = readCache();
       if (cached && cached.length > 0) {
         tasks = cached;
@@ -1950,8 +1925,6 @@
         hideLoginScreen();
       }
 
-      // Fire sign-in WITHOUT awaiting
-      // Auth listener above handles SIGNED_IN and loads fresh data
       supa.auth.signInWithPassword({
         email:    creds.email,
         password: creds.password
