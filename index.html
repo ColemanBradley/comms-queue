@@ -843,6 +843,7 @@
 
   async function handleSignOut() {
     closeMenu();
+    localStorage.setItem('cqSignedOut', '1');
     try { await supa.auth.signOut({ scope: 'local' }); } catch(e) {}
     Object.keys(localStorage)
       .filter(k => k.startsWith('sb-') || k.includes('supabase') || k === 'cqUserId' || k === CACHE_KEY || k === CRED_KEY)
@@ -893,7 +894,10 @@
       if (loginVisible) {
         const email    = document.getElementById('loginEmail').value.trim();
         const password = document.getElementById('loginPassword').value;
-        if (email && password) saveCredentials(email, password);
+        if (email && password) {
+          saveCredentials(email, password);
+          localStorage.removeItem('cqSignedOut');
+        }
       }
 
       if (!initHandled) {
@@ -1926,6 +1930,14 @@
   setTimeout(function init() {
     const storedUserId = localStorage.getItem('cqUserId');
     const creds        = loadCredentials();
+    const signedOut    = localStorage.getItem('cqSignedOut');
+
+    if (signedOut) {
+      // User explicitly signed out — show login, don't auto re-auth
+      document.getElementById('loginScreen').style.display = 'flex';
+      document.querySelector('header').style.display       = 'none';
+      return;
+    }
 
     if (storedUserId && creds) {
       // Show cache instantly
